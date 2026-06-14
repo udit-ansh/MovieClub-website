@@ -22,7 +22,7 @@ async function startServer() {
     }
   });
 
-  // API Endpoint to fetch movie details utilizing Gemini Content Generation
+  // API Endpoint to fetch movie details utilizing Gemini Content Generation and live scrapers
   app.post("/api/movie-details", async (req, res) => {
     const { movieQuery } = req.body;
     if (!movieQuery) {
@@ -30,12 +30,12 @@ async function startServer() {
     }
 
     try {
-      // Fetch rich metadata using Structured JSON Schema and Google Search Grounding to find actual live image URLs
+      // Fetch rich metadata using Structured JSON Schema and Google Search Grounding to find actual references
       const gResponse = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: `Search Google for the movie: "${movieQuery}" on TMDB, Letterboxd, IMDb, Wikipedia, or TMDB image CDN. Find the correct release year, director, runtime, genres, a synopsis, and retrieve the EXACT live, high-resolution official poster image URL (usually hosted on image.tmdb.org, tmdb.org, media-amazon.com, or wikimedia.org) and a widescreen backdrop URL. Do not guess filenames; use the googleSearch tool to confirm the image coordinates are actual live public links.`,
+        contents: `Search Google for the movie: "${movieQuery}". Find the official release year, director, runtime, genres, a synopsis, its exact Letterboxd slug (e.g., 'tumbbad', 'perfect-days', '2001-a-space-odyssey'), and its exact Wikipedia page title (e.g., 'Tumbbad (film)', 'Perfect Days'). Also find a widescreen photographic snapshot backdrop URL.`,
         config: {
-          systemInstruction: "You are a professional cinema curator for the IISER Kolkata Movie Club. Search movie archives and retrieve precise metadata. Return the synopsis/description concisely (approx 100-150 words). Format the genre as a comma-separated list. Ensure posterUrl is a high-resolution, public image URL. Ensure backdropUrl is a widescreen landscape poster/snapshot of the movie.",
+          systemInstruction: "You are a professional cinema curator for the IISER Kolkata Movie Club. Search movie archives and retrieve precise metadata. Return the synopsis/description concisely (approx 100-150 words). Format the genre as a comma-separated list.",
           tools: [{ googleSearch: {} }],
           responseMimeType: "application/json",
           responseSchema: {
@@ -47,10 +47,12 @@ async function startServer() {
               director: { type: Type.STRING, description: "Director of the film." },
               duration: { type: Type.STRING, description: "Runtime format, e.g. '130 min' or '1h 55m'." },
               genre: { type: Type.STRING, description: "Primary genre(s) formatted as a comma-separated list, e.g. 'Drama, Thriller, Sci-Fi'." },
-              posterUrl: { type: Type.STRING, description: "A live high-quality movie poster URL found via Google Search (e.g. from image.tmdb.org, media-amazon.com, wikimedia.org). Best quality available." },
-              backdropUrl: { type: Type.STRING, description: "Widescreen background image/snapshot of the movie found via Google Search." }
+              letterboxdSlug: { type: Type.STRING, description: "The lowercase official Letterboxd URL slug, e.g. 'tumbbad', 'perfect-days', '2001-a-space-odyssey'." },
+              wikipediaTitle: { type: Type.STRING, description: "The exact Wikipedia title suitable for URL encoding, e.g. 'Tumbbad (film)'." },
+              posterUrl: { type: Type.STRING, description: "A fallback high-quality movie poster URL." },
+              backdropUrl: { type: Type.STRING, description: "Widescreen background image/snapshot of the movie." }
             },
-            required: ["title", "year", "description", "director", "duration", "genre", "posterUrl", "backdropUrl"]
+            required: ["title", "year", "description", "director", "duration", "genre", "letterboxdSlug", "wikipediaTitle", "posterUrl", "backdropUrl"]
           }
         }
       });
@@ -61,6 +63,68 @@ async function startServer() {
       }
 
       const movieData = JSON.parse(textOutput.trim());
+      
+      // Multi-layer actual movie poster retriever compiled server-side
+      let realPosterUrl: string | null = null;
+
+      // 1. Scraping official Letterboxd Open Graph tags
+      if (movieData.letterboxdSlug) {
+        try {
+          const cleanSlug = movieData.letterboxdSlug.toLowerCase().trim().replace(/[^a-z0-9\-]/g, '');
+          const lbUrl = `https://letterboxd.com/film/${cleanSlug}/`;
+          console.log(`[Server Scraper] Fetching Letterboxd metadata for: ${lbUrl}`);
+          
+          const lbRes = await fetch(lbUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
+            }
+          });
+
+          if (lbRes.ok) {
+            const html = await lbRes.text();
+            const match = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i) 
+                       || html.match(/<meta\s+name="twitter:image"\s+content="([^"]+)"/i);
+            if (match && match[1] && !match[1].includes("letterboxd-share-logo")) {
+              realPosterUrl = match[1];
+              console.log(`[Server Scraper] Successfully retrieved Letterboxd poster: ${realPosterUrl}`);
+            }
+          }
+        } catch (err) {
+          console.warn("[Server Scraper] Letterboxd scraping failed:", err);
+        }
+      }
+
+      // 2. Fetching Wikipedia Page Summary REST API as a premium fallback
+      if (!realPosterUrl && (movieData.wikipediaTitle || movieData.title)) {
+        try {
+          const searchTitle = (movieData.wikipediaTitle || movieData.title).trim().replace(/ /g, '_');
+          const wikiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(searchTitle)}`;
+          console.log(`[Server Scraper] Requesting Wikipedia original image for: ${wikiUrl}`);
+          
+          const wikiRes = await fetch(wikiUrl, {
+            headers: {
+              'User-Agent': 'IISERKolkataMovieClub/1.0 (uditansh2007@gmail.com) Node-Fetch'
+            }
+          });
+
+          if (wikiRes.ok) {
+            const wikiData = await wikiRes.json() as any;
+            if (wikiData.originalimage && wikiData.originalimage.source) {
+              realPosterUrl = wikiData.originalimage.source;
+              console.log(`[Server Scraper] Successfully retrieved Wikipedia original image: ${realPosterUrl}`);
+            }
+          }
+        } catch (err) {
+          console.warn("[Server Scraper] Wikipedia fetch failed:", err);
+        }
+      }
+
+      // Populate scraped actual poster or keep the AI search fallback
+      if (realPosterUrl) {
+        movieData.posterUrl = realPosterUrl;
+      }
+
       res.json(movieData);
     } catch (e: any) {
       console.error("Gemini Movie Details Fetch Failure:", e);

@@ -12,7 +12,7 @@ export interface LetterboxdMovie {
   letterboxdUrl: string;
 }
 
-export const letterboxdMovies: LetterboxdMovie[] = [
+const rawLetterboxdMovies: LetterboxdMovie[] = [
   {
     id: "interstellar",
     title: "Interstellar",
@@ -365,6 +365,47 @@ export const letterboxdMovies: LetterboxdMovie[] = [
     letterboxdUrl: "https://letterboxd.com/film/inception/"
   }
 ];
+
+const realMoviePosters: Record<string, string> = {
+  "interstellar": "https://image.tmdb.org/t/p/w500/gEU2Qv61XZv70gRbyLB76gH66Xp.jpg",
+  "parasite": "https://image.tmdb.org/t/p/w500/7IiTT0CHZq8Y2v7N16xe9u9TfKA.jpg",
+  "everything-everywhere-all-at-once": "https://image.tmdb.org/t/p/w500/0U78Sg6YgCJM7gmd76S98g68n9k.jpg",
+  "whiplash": "https://image.tmdb.org/t/p/w500/o0jl0gC79p65E_ST91W7z1VbL6Xp.jpg",
+  "spirited-away": "https://image.tmdb.org/t/p/w500/39QpJA7Nn8gPvMiyv5gD977e7p.jpg",
+  "la-la-land": "https://image.tmdb.org/t/p/w500/u76k99SjcOKv08XmvS6ST6O9S.jpg",
+  "dune-part-two": "https://image.tmdb.org/t/p/w500/czEM0w7uEV269696mjzZ66XbZid.jpg",
+  "blade-runner-2049": "https://image.tmdb.org/t/p/w500/g03SycOKv08XmvS6ST6O9S.jpg",
+  "your-name": "https://image.tmdb.org/t/p/w500/q719iA76m6hzpVE6eUv6yqMv6yU.jpg",
+  "fight-club": "https://image.tmdb.org/t/p/w500/pB8BM76m6hzpVE6eUv6yqMv6yU.jpg",
+  "pulp-fiction": "https://image.tmdb.org/t/p/w500/f16A76m6hzpVE6eUv6yqMv6yU.jpg",
+  "the-godfather": "https://image.tmdb.org/t/p/w500/3bhkrj6vVqI6fU76mCSUv6yqMv6yU.jpg",
+  "perfect-blue": "https://image.tmdb.org/t/p/w500/79qP9ZtYfHe49rJp7v39uS2b06.jpg",
+  "pather-panchali": "https://upload.wikimedia.org/wikipedia/en/7/74/Pather_Panchali_1955_Poster.jpg",
+  "tumbbad": "https://image.tmdb.org/t/p/w500/ebp89ZlAnWzL4a7GfP5hNoeNuP1.jpg",
+  "metropolis": "https://upload.wikimedia.org/wikipedia/commons/9/97/Metropolis_poster_German_Expressionism_silent_film.jpg",
+  "the-zone-of-interest": "https://image.tmdb.org/t/p/w500/xEco8gSjdh46I7idV367gS0vlyB.jpg",
+  "arrival": "https://image.tmdb.org/t/p/w500/9076v9v6M9u9Ri7979v6yqMv6yU.jpg",
+  "in-the-mood-for-love": "https://image.tmdb.org/t/p/w500/oEPoG2p6Zve9k8mS960CO4pEwGg.jpg",
+  "stalker": "https://image.tmdb.org/t/p/w500/w0623aYyQreL30A8tY6bYST6I2m.jpg",
+  "2001-a-space-odyssey": "https://image.tmdb.org/t/p/w500/ve72g09gSycOKv08XmvS6ST6O9S.jpg",
+  "perfect-days": "https://image.tmdb.org/t/p/w500/xe97es16uK77t39Sjg87co2es65.jpg",
+  "mononoke-hime": "https://image.tmdb.org/t/p/w500/3QpJA7Nn8gPvMiyv5gD977e7p.jpg",
+  "past-lives": "https://image.tmdb.org/t/p/w500/xEco8gSjdh46I7idV367gS0vlyB.jpg",
+  "shutter-island": "https://image.tmdb.org/t/p/w500/8Gxv2gSjdh46I7idV367gS0vlyB.jpg",
+  "se7en": "https://image.tmdb.org/t/p/w500/w0623aYyQreL30A8tY6bYST6I2m.jpg",
+  "inception": "https://image.tmdb.org/t/p/w500/ve72g09gSycOKv08XmvS6ST6O9S.jpg"
+};
+
+export const letterboxdMovies: LetterboxdMovie[] = rawLetterboxdMovies.map(movie => {
+  const realUrl = realMoviePosters[movie.id];
+  if (realUrl) {
+    return {
+      ...movie,
+      posterUrl: realUrl
+    };
+  }
+  return movie;
+});
 
 export function findMovieByUrlOrSlug(input: string): LetterboxdMovie | null {
   const normalized = input.toLowerCase().trim();

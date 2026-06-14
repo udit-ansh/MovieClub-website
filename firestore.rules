@@ -1,0 +1,162 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isIISERUser() {
+      return isEmailVerified() && (
+        request.auth.token.email.endsWith('@iiserkol.ac.in') ||
+        request.auth.token.email == 'uditansh2007@gmail.com' ||
+        request.auth.token.email == 'uditansh2507@gmail.com'
+      );
+    }
+
+    function isAdmin() {
+      return isIISERUser() && (
+        request.auth.token.email == 'movie.activity@iiserkol.ac.in' ||
+        request.auth.token.email == 'uditansh2007@gmail.com' ||
+        request.auth.token.email == 'uditansh2507@gmail.com' ||
+        request.auth.token.email.matches('^admin\\..*')
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Collection 1: Screenings (Upcoming movie events)
+    match /screenings/{screeningId} {
+      allow read, get, list: if true;
+      allow create: if isAdmin() && isValidId(screeningId) &&
+        incoming().id == screeningId &&
+        incoming().title is string && incoming().title.size() <= 200 &&
+        incoming().director is string && incoming().director.size() <= 100 &&
+        incoming().year is number &&
+        incoming().date is string && incoming().date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        incoming().time is string && incoming().time.matches('^\\d{2}:\\d{2}$') &&
+        incoming().venue is string && incoming().venue.size() <= 200 &&
+        incoming().description is string && incoming().description.size() <= 2000 &&
+        incoming().posterUrl is string && incoming().posterUrl.size() <= 1000 &&
+        incoming().runtime is string && incoming().runtime.size() <= 50;
+
+      allow update: if isAdmin() && 
+        incoming().title is string && incoming().title.size() <= 200 &&
+        incoming().director is string && incoming().director.size() <= 100 &&
+        incoming().year is number &&
+        incoming().date is string && incoming().date.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        incoming().time is string && incoming().time.matches('^\\d{2}:\\d{2}$') &&
+        incoming().venue is string && incoming().venue.size() <= 200 &&
+        incoming().description is string && incoming().description.size() <= 2000 &&
+        incoming().posterUrl is string && incoming().posterUrl.size() <= 1000 &&
+        incoming().runtime is string && incoming().runtime.size() <= 50;
+
+      allow delete: if isAdmin();
+    }
+
+    // Collection 2: Past Movies (Screened movies with reviews)
+    match /pastMovies/{movieId} {
+      allow read, get, list: if true;
+      allow create: if isAdmin() && isValidId(movieId) &&
+        incoming().id == movieId &&
+        incoming().title is string &&
+        incoming().director is string &&
+        incoming().year is number &&
+        incoming().screenedDate is string &&
+        incoming().rating is number &&
+        incoming().letterboxdUrl is string &&
+        incoming().posterUrl is string &&
+        incoming().synopsis is string &&
+        incoming().genre is list &&
+        incoming().reviews is list;
+
+      allow update: if isAdmin() || (
+        isIISERUser() &&
+        // Ensure core movie metadata is strictly immutable for students
+        incoming().id == existing().id &&
+        incoming().title == existing().title &&
+        incoming().director == existing().director &&
+        incoming().year == existing().year &&
+        incoming().screenedDate == existing().screenedDate &&
+        incoming().rating == existing().rating &&
+        incoming().letterboxdUrl == existing().letterboxdUrl &&
+        incoming().posterUrl == existing().posterUrl &&
+        incoming().synopsis == existing().synopsis &&
+        incoming().genre == existing().genre &&
+        // Only allow updating reviews list
+        incoming().diff(existing()).affectedKeys().hasOnly(['reviews']) &&
+        incoming().reviews is list &&
+        incoming().reviews.size() == existing().reviews.size() + 1 &&
+        incoming().reviews[0].userEmail == request.auth.token.email &&
+        incoming().reviews[0].userName is string && incoming().reviews[0].userName.size() <= 100 &&
+        incoming().reviews[0].rating is number && incoming().reviews[0].rating >= 1 && incoming().reviews[0].rating <= 5 &&
+        incoming().reviews[0].comment is string && incoming().reviews[0].comment.size() <= 1000
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // Collection 3: Recommendations (Student wishlist submission items)
+    match /recommendations/{recId} {
+      allow read, get, list: if true;
+      allow create: if isIISERUser() && isValidId(recId) &&
+        incoming().id == recId &&
+        incoming().suggestedBy == request.auth.token.email &&
+        incoming().title is string && incoming().title.size() <= 200 &&
+        incoming().director is string && incoming().director.size() <= 100 &&
+        incoming().year is number &&
+        incoming().genre is string &&
+        incoming().notes is string && incoming().notes.size() <= 1000 &&
+        incoming().votes is list &&
+        incoming().votes.size() == 1 &&
+        incoming().votes[0] == request.auth.token.email;
+
+      allow update: if isIISERUser() && (
+        // Option 1: Complete admin rewrite
+        isAdmin() ||
+        // Option 2: Student upvoted or downvoted keeping other attributes static
+        (
+          incoming().id == existing().id &&
+          incoming().title == existing().title &&
+          incoming().director == existing().director &&
+          incoming().year == existing().year &&
+          incoming().genre == existing().genre &&
+          incoming().notes == existing().notes &&
+          incoming().suggestedBy == existing().suggestedBy &&
+          incoming().suggestedByName == existing().suggestedByName &&
+          incoming().suggestedAt == existing().suggestedAt &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['votes']) &&
+          incoming().votes is list &&
+          (
+            // Action: Upvote - student added their email
+            (incoming().votes.size() == existing().votes.size() + 1 && incoming().votes.hasAll(existing().votes) && incoming().votes.hasAll([request.auth.token.email])) ||
+            // Action: Revoke Upvote - student removed their email
+            (incoming().votes.size() == existing().votes.size() - 1 && existing().votes.hasAll(incoming().votes) && !incoming().votes.hasAll([request.auth.token.email]))
+          )
+        )
+      );
+
+      allow delete: if isAdmin() || (isIISERUser() && existing().suggestedBy == request.auth.token.email);
+    }
+  }
+}

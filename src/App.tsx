@@ -6,8 +6,16 @@ import {
 
 import { Screening, PastMovie, Recommendation, User, UserReview } from './types';
 import { initialScreenings, initialPastMovies, initialRecommendations } from './initialData';
-import { auth } from './firebase';
+import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc 
+} from 'firebase/firestore';
 
 import Navbar from './components/Navbar';
 import ScreeningSchedule from './components/ScreeningSchedule';
@@ -20,14 +28,13 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('schedule');
   const [adminMode, setAdminMode] = useState<boolean>(false);
 
-  // Core schedules, past screenings, recommendations pools
-  const [screenings, setScreenings] = useState<Screening[]>([]);
-  const [pastMovies, setPastMovies] = useState<PastMovie[]>([]);
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  // Core schedules, past screenings, recommendations pools with initial local fallback
+  const [screenings, setScreenings] = useState<Screening[]>(initialScreenings);
+  const [pastMovies, setPastMovies] = useState<PastMovie[]>(initialPastMovies);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>(initialRecommendations);
 
-  // Load state from local storage on bootstrap
+  // Load session auth from local storage on bootstrap
   useEffect(() => {
-    // 1. Session Auth
     const savedUser = localStorage.getItem('iiser_movie_user');
     if (savedUser) {
       const parsed = JSON.parse(savedUser) as User;
@@ -36,33 +43,98 @@ export default function App() {
         setAdminMode(true);
       }
     }
+  }, []);
 
-    // 2. Upcoming Schedule pool
-    const savedScreenings = localStorage.getItem('iiser_movie_screenings');
-    if (savedScreenings) {
-      setScreenings(JSON.parse(savedScreenings));
-    } else {
-      setScreenings(initialScreenings);
-      localStorage.setItem('iiser_movie_screenings', JSON.stringify(initialScreenings));
-    }
+  // Sync / screen datasets in real-time with Firestore onsnapshot
+  // 1. Subscribe to Screenings
+  useEffect(() => {
+    const screeningsCol = collection(db, 'screenings');
+    const unsubscribe = onSnapshot(screeningsCol, (snapshot) => {
+      if (snapshot.empty) {
+        console.log('[Firebase] Screenings collection is empty. Attempting seed...');
+        initialScreenings.forEach(async (s) => {
+          try {
+            await setDoc(doc(db, 'screenings', s.id), s);
+          } catch (e) {
+            console.warn(`[Firebase] Seeding screening ${s.id} failed:`, e);
+          }
+        });
+      } else {
+        const list: Screening[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push(docSnap.data() as Screening);
+        });
+        // Sort by date/time order
+        list.sort((a, b) => {
+          const dateTimeA = `${a.date}T${a.time}`;
+          const dateTimeB = `${b.date}T${b.time}`;
+          return dateTimeA.localeCompare(dateTimeB);
+        });
+        setScreenings(list);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'screenings');
+    });
 
-    // 3. Past List pool
-    const savedPast = localStorage.getItem('iiser_movie_past');
-    if (savedPast) {
-      setPastMovies(JSON.parse(savedPast));
-    } else {
-      setPastMovies(initialPastMovies);
-      localStorage.setItem('iiser_movie_past', JSON.stringify(initialPastMovies));
-    }
+    return () => unsubscribe();
+  }, []);
 
-    // 4. Recommendations Pool
-    const savedRecs = localStorage.getItem('iiser_movie_recs');
-    if (savedRecs) {
-      setRecommendations(JSON.parse(savedRecs));
-    } else {
-      setRecommendations(initialRecommendations);
-      localStorage.setItem('iiser_movie_recs', JSON.stringify(initialRecommendations));
-    }
+  // 2. Subscribe to Past Movies
+  useEffect(() => {
+    const pastCol = collection(db, 'pastMovies');
+    const unsubscribe = onSnapshot(pastCol, (snapshot) => {
+      if (snapshot.empty) {
+        console.log('[Firebase] Past movies collection is empty. Attempting seed...');
+        initialPastMovies.forEach(async (m) => {
+          try {
+            await setDoc(doc(db, 'pastMovies', m.id), m);
+          } catch (e) {
+            console.warn(`[Firebase] Seeding past movie ${m.id} failed:`, e);
+          }
+        });
+      } else {
+        const list: PastMovie[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push(docSnap.data() as PastMovie);
+        });
+        // Sort past movies descending by screening date
+        list.sort((a, b) => b.screenedDate.localeCompare(a.screenedDate));
+        setPastMovies(list);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'pastMovies');
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // 3. Subscribe to Recommendations
+  useEffect(() => {
+    const recsCol = collection(db, 'recommendations');
+    const unsubscribe = onSnapshot(recsCol, (snapshot) => {
+      if (snapshot.empty) {
+        console.log('[Firebase] Recommendations collection is empty. Attempting seed...');
+        initialRecommendations.forEach(async (r) => {
+          try {
+            await setDoc(doc(db, 'recommendations', r.id), r);
+          } catch (e) {
+            console.warn(`[Firebase] Seeding recommendation ${r.id} failed:`, e);
+          }
+        });
+      } else {
+        const list: Recommendation[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push(docSnap.data() as Recommendation);
+        });
+        // Sort by proposed date descending
+        list.sort((a, b) => b.suggestedAt.localeCompare(a.suggestedAt));
+        setRecommendations(list);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'recommendations');
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // Listen to real Firebase auth status changes and auto-login if authenticated
@@ -92,22 +164,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Sync methods
-  const saveScreenings = (newScreenings: Screening[]) => {
-    setScreenings(newScreenings);
-    localStorage.setItem('iiser_movie_screenings', JSON.stringify(newScreenings));
-  };
-
-  const savePastMovies = (newPast: PastMovie[]) => {
-    setPastMovies(newPast);
-    localStorage.setItem('iiser_movie_past', JSON.stringify(newPast));
-  };
-
-  const saveRecs = (newRecs: Recommendation[]) => {
-    setRecommendations(newRecs);
-    localStorage.setItem('iiser_movie_recs', JSON.stringify(newRecs));
-  };
-
   // Auth Callbacks
   const handleLogin = (email: string, name: string, role: 'admin' | 'student') => {
     const userObj: User = { email, name, role };
@@ -124,81 +180,94 @@ export default function App() {
     setAdminMode(false);
   };
 
-  // Admin Actions for Schedule
-  const handleAddScreening = (data: Omit<Screening, 'id'>) => {
+  // Admin Actions for Schedule (Real-time synced updates to database)
+  const handleAddScreening = async (data: Omit<Screening, 'id'>) => {
+    const id = `s-${Date.now()}`;
     const newEntry: Screening = {
       ...data,
-      id: `s-${Date.now()}`
+      id
     };
-    const updated = [newEntry, ...screenings];
-    saveScreenings(updated);
+    try {
+      await setDoc(doc(db, 'screenings', id), newEntry);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `screenings/${id}`);
+    }
   };
 
-  const handleUpdateScreening = (updatedItem: Screening) => {
-    const updated = screenings.map(s => s.id === updatedItem.id ? updatedItem : s);
-    saveScreenings(updated);
+  const handleUpdateScreening = async (updatedItem: Screening) => {
+    try {
+      await setDoc(doc(db, 'screenings', updatedItem.id), updatedItem);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `screenings/${updatedItem.id}`);
+    }
   };
 
-  const handleDeleteScreening = (id: string) => {
-    const updated = screenings.filter(s => s.id !== id);
-    saveScreenings(updated);
+  const handleDeleteScreening = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'screenings', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `screenings/${id}`);
+    }
   };
 
   // Past Screenings Student Reviews Action
-  const handleAddReview = (movieId: string, reviewData: Omit<UserReview, 'id' | 'createdAt'>) => {
+  const handleAddReview = async (movieId: string, reviewData: Omit<UserReview, 'id' | 'createdAt'>) => {
     const newReview: UserReview = {
       ...reviewData,
       id: `r-${Date.now()}`,
       createdAt: new Date().toISOString()
     };
 
-    const updated = pastMovies.map(movie => {
-      if (movie.id === movieId) {
-        return {
-          ...movie,
-          reviews: [newReview, ...movie.reviews]
-        };
-      }
-      return movie;
-    });
+    const targetMovie = pastMovies.find(m => m.id === movieId);
+    if (!targetMovie) return;
 
-    savePastMovies(updated);
+    try {
+      const updatedReviews = [newReview, ...targetMovie.reviews];
+      await updateDoc(doc(db, 'pastMovies', movieId), {
+        reviews: updatedReviews
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `pastMovies/${movieId}`);
+    }
   };
 
   // Student Recommendation Submission Action
-  const handleAddRecommendation = (recData: Omit<Recommendation, 'id' | 'suggestedBy' | 'suggestedByName' | 'suggestedAt' | 'votes'>) => {
+  const handleAddRecommendation = async (recData: Omit<Recommendation, 'id' | 'suggestedBy' | 'suggestedByName' | 'suggestedAt' | 'votes'>) => {
     if (!currentUser) return;
     
+    const id = `rec-${Date.now()}`;
     const newRec: Recommendation = {
       ...recData,
-      id: `rec-${Date.now()}`,
+      id,
       suggestedBy: currentUser.email,
       suggestedByName: currentUser.name,
       suggestedAt: new Date().toISOString(),
       votes: [currentUser.email] // core authors auto-upvote their entries
     };
 
-    const updated = [newRec, ...recommendations];
-    saveRecs(updated);
+    try {
+      await setDoc(doc(db, 'recommendations', id), newRec);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `recommendations/${id}`);
+    }
   };
 
-  const handleVoteRecommendation = (id: string, userEmail: string) => {
-    const updated = recommendations.map(rec => {
-      if (rec.id === id) {
-        const hasVoted = rec.votes.includes(userEmail);
-        const newVotes = hasVoted 
-          ? rec.votes.filter(email => email !== userEmail) // revoke upvote
-          : [...rec.votes, userEmail]; // add upvote
+  const handleVoteRecommendation = async (id: string, userEmail: string) => {
+    const rec = recommendations.find(r => r.id === id);
+    if (!rec) return;
 
-        return {
-          ...rec,
-          votes: newVotes
-        };
-      }
-      return rec;
-    });
+    const hasVoted = rec.votes.includes(userEmail);
+    const newVotes = hasVoted 
+      ? rec.votes.filter(email => email !== userEmail) // revoke upvote
+      : [...rec.votes, userEmail]; // add upvote
 
-    saveRecs(updated);
+    try {
+      await updateDoc(doc(db, 'recommendations', id), {
+        votes: newVotes
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `recommendations/${id}`);
+    }
   };
 
   return (
