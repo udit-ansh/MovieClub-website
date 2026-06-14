@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { Film, User as UserIcon, LogOut, Shield, ShieldCheck, HelpCircle, GraduationCap } from 'lucide-react';
+import { Film, User as UserIcon, LogOut, Shield, ShieldCheck, HelpCircle, GraduationCap, Camera, UploadCloud, Image as ImageIcon } from 'lucide-react';
 import { User } from '../types';
 import { auth, googleProvider } from '../firebase';
 import { signInWithPopup, signOut as fbSignOut } from 'firebase/auth';
 
 interface NavbarProps {
   currentUser: User | null;
-  onLogin: (email: string, name: string, role: 'admin' | 'student') => void;
+  onLogin: (email: string, name: string, role: 'admin' | 'student', photoURL?: string) => void;
   onLogout: () => void;
+  onUpdateProfile?: (updatedFields: Partial<User>) => void;
   activeTab: string;
   setActiveTab: (tab: string) => void;
   adminMode: boolean;
@@ -18,6 +19,7 @@ export default function Navbar({
   currentUser,
   onLogin,
   onLogout,
+  onUpdateProfile,
   activeTab,
   setActiveTab,
   adminMode,
@@ -30,6 +32,72 @@ export default function Navbar({
   const [errorMsg, setErrorMsg] = useState('');
   const [showAdminVerify, setShowAdminVerify] = useState(false);
   const [isGoogleCustom, setIsGoogleCustom] = useState(false);
+
+  // Profile Picture Upload State
+  const [showEditProfilePic, setShowEditProfilePic] = useState(false);
+  const [customAvatarUrl, setCustomAvatarUrl] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
+
+  const AVATAR_PRESETS = [
+    { name: 'Popcorn', url: 'https://images.unsplash.com/photo-1578496479914-7ef3b0193be3?q=80&w=150&auto=format&fit=crop' },
+    { name: 'Film Reel', url: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=150&auto=format&fit=crop' },
+    { name: 'Theater', url: 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?q=80&w=150&auto=format&fit=crop' },
+    { name: 'Vintage Projector', url: 'https://images.unsplash.com/photo-1543536448-d209d2d13a1c?q=80&w=150&auto=format&fit=crop' },
+    { name: 'Neon Sign', url: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?q=80&w=150&auto=format&fit=crop' },
+    { name: 'Clapperboard', url: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=150&auto=format&fit=crop' }
+  ];
+
+  const handleAvatarFile = (file: File) => {
+    setAvatarError('');
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('Please upload an image file (PNG, JPG, SVG, WebP).');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setAvatarError('Image is too large. Recommended size is under 2MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result && typeof e.target.result === 'string') {
+        setCustomAvatarUrl(e.target.result);
+      }
+    };
+    reader.onerror = () => {
+      setAvatarError('Failed to read image file.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAvatarDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleAvatarFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleAvatarFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      handleAvatarFile(e.target.files[0]);
+    }
+  };
+
+  const handleSaveAvatar = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customAvatarUrl) {
+      setAvatarError('Please select a preset, upload a file, or enter an image URL.');
+      return;
+    }
+    if (onUpdateProfile) {
+      onUpdateProfile({ photoURL: customAvatarUrl });
+    }
+    setShowEditProfilePic(false);
+    setCustomAvatarUrl('');
+    setAvatarError('');
+  };
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,7 +169,7 @@ export default function Navbar({
         role = 'admin';
       }
       
-      onLogin(email, name, role);
+      onLogin(email, name, role, user.photoURL || undefined);
       setShowLoginModal(false);
       setEmailInput('');
       setNameInput('');
@@ -129,7 +197,7 @@ export default function Navbar({
       }
       
       setAdminMode(true);
-      onLogin(email, name, 'admin');
+      onLogin(email, name, 'admin', user.photoURL || undefined);
       setShowAdminVerify(false);
       setPasswordInput('');
       setErrorMsg('');
@@ -263,19 +331,41 @@ export default function Navbar({
                   </p>
                 </div>
                 <div className="relative h-9 w-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-amber-400 font-semibold cursor-pointer group">
-                  {currentUser.name.charAt(0).toUpperCase()}
+                  {currentUser.photoURL ? (
+                    <img 
+                      src={currentUser.photoURL} 
+                      alt={currentUser.name} 
+                      className="h-full w-full rounded-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <span>{currentUser.name.charAt(0).toUpperCase()}</span>
+                  )}
                   <div className="absolute right-0 bottom-0 h-2.5 w-2.5 rounded-full bg-green-500 border border-zinc-950"></div>
                   
                   {/* Hover dropdown simulated */}
-                  <div className="absolute right-0 top-11 bg-zinc-900 border border-zinc-800 rounded-lg py-1 px-2 w-48 text-left shadow-xl hidden group-hover:block z-50">
-                    <p className="text-[11px] font-mono text-zinc-500 border-b border-zinc-800 pb-1 mb-1 truncate">
+                  <div className="absolute right-0 top-10 bg-zinc-900 border border-zinc-800 rounded-lg py-1.5 px-2 w-48 text-left shadow-xl hidden group-hover:block z-50 animate-fadeIn">
+                    <p className="text-[11px] font-mono text-zinc-400 border-b border-zinc-800 pb-1.5 mb-1.5 truncate">
                       {currentUser.email}
                     </p>
                     <button
-                      onClick={handleSignOut}
-                      className="w-full flex items-center space-x-2 text-red-400 hover:bg-zinc-850 p-1.5 rounded text-xs"
+                      onClick={() => {
+                        setCustomAvatarUrl(currentUser.photoURL || '');
+                        setShowEditProfilePic(true);
+                      }}
+                      className="w-full flex items-center space-x-2 text-zinc-300 hover:bg-zinc-800 p-1.5 rounded text-xs mb-1 transition-colors"
                     >
-                      <LogOut className="h-3.5 w-3.5" />
+                      <Camera className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                      <span>Update Avatar</span>
+                    </button>
+                    <button
+                      onClick={handleSignOut}
+                      className="w-full flex items-center space-x-2 text-red-400 hover:bg-zinc-855 p-1.5 rounded text-xs transition-colors"
+                    >
+                      <LogOut className="h-3.5 w-3.5 shrink-0" />
                       <span>Sign Out</span>
                     </button>
                   </div>
@@ -641,6 +731,163 @@ export default function Navbar({
                 >
                   <ShieldCheck className="h-4 w-4" />
                   <span>Authenticate</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Update Profile Picture Modal */}
+      {showEditProfilePic && currentUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-fade-in" id="edit-avatar-modal">
+          <div className="w-full max-w-lg rounded-2xl border border-zinc-850 bg-zinc-950 p-6 shadow-2xl relative">
+            
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setShowEditProfilePic(false);
+                setCustomAvatarUrl('');
+                setAvatarError('');
+              }}
+              className="absolute top-4 right-4 p-2 text-zinc-500 hover:text-zinc-200 rounded-lg cursor-pointer transition-colors"
+              id="btn-close-avatar-modal"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="flex flex-col mb-5">
+              <h2 className="font-serif text-xl font-bold text-zinc-100 flex items-center gap-2">
+                <Camera className="h-5 w-5 text-amber-500 opacity-90" />
+                <span>Customize Your Avatar</span>
+              </h2>
+              <p className="text-xs text-zinc-400 mt-1">
+                Choose a cinematic classic preset, paste any direct image URL, or drop your own custom files!
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveAvatar} className="space-y-5">
+              {/* Image Preview and Drag-and-Drop Area */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                <div className="flex flex-col items-center justify-center p-3 bg-zinc-900/40 rounded-xl border border-zinc-900">
+                  <span className="text-[10px] font-mono text-zinc-500 uppercase mb-2 select-none">Avatar Preview</span>
+                  <div className="h-20 w-20 rounded-full bg-zinc-800 border-2 border-zinc-700 overflow-hidden flex items-center justify-center text-amber-500 font-bold text-2xl relative group">
+                    {customAvatarUrl ? (
+                      <img 
+                        src={customAvatarUrl} 
+                        alt="Preview" 
+                        className="h-full w-full object-cover"
+                        referrerPolicy="no-referrer"
+                        onError={() => setAvatarError('Invalid image URL or failed to load image.')}
+                      />
+                    ) : (
+                      <span>{currentUser.name.charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div 
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleAvatarDrop}
+                  className={`md:col-span-2 flex flex-col items-center justify-center border border-dashed rounded-xl p-4 transition-all text-center h-28 cursor-pointer relative ${
+                    isDragging 
+                      ? 'border-amber-500 bg-amber-500/5' 
+                      : 'border-zinc-800 hover:border-zinc-700 bg-zinc-900/10'
+                  }`}
+                >
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleAvatarFileSelect}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    title="Click or drag to select custom file"
+                    id="avatar-file-input"
+                  />
+                  <UploadCloud className="h-7 w-7 text-zinc-500 mb-1 pointer-events-none group-hover:text-amber-500 transition-colors" />
+                  <p className="text-xs font-semibold text-zinc-300 pointer-events-none">Drag & drop profile picture</p>
+                  <p className="text-[10px] text-zinc-500 mt-0.5 pointer-events-none font-mono">or click to browse filesystem</p>
+                </div>
+              </div>
+
+              {/* Preset Avatars Selection */}
+              <div className="space-y-2">
+                <span className="block text-[10px] font-mono text-zinc-400 uppercase tracking-wider">Cinematic Presets</span>
+                <div className="grid grid-cols-6 gap-2">
+                  {AVATAR_PRESETS.map((preset) => (
+                    <button
+                      key={preset.name}
+                      type="button"
+                      onClick={() => {
+                        setCustomAvatarUrl(preset.url);
+                        setAvatarError('');
+                      }}
+                      className={`relative h-11 w-11 rounded-full overflow-hidden border transition-all hover:scale-105 active:scale-95 cursor-pointer ${
+                        customAvatarUrl === preset.url 
+                          ? 'border-amber-500 scale-105 ring-2 ring-amber-500/20' 
+                          : 'border-zinc-800 opacity-70 hover:opacity-100'
+                      }`}
+                      title={preset.name}
+                    >
+                      <img 
+                        src={preset.url} 
+                        alt={preset.name} 
+                        className="h-full w-full object-cover" 
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* URL input field */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-mono text-zinc-400 uppercase tracking-wider">
+                  Or Paste Custom Image URL
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-650">
+                    <ImageIcon className="h-4 w-4 text-zinc-500" />
+                  </div>
+                  <input
+                    type="url"
+                    placeholder="https://example.com/avatar.jpg"
+                    value={customAvatarUrl.startsWith('data:') ? '' : customAvatarUrl}
+                    onChange={(e) => {
+                      setCustomAvatarUrl(e.target.value);
+                      if (avatarError) setAvatarError('');
+                    }}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 pl-9 pr-4 py-2 text-xs text-zinc-200 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+                  />
+                </div>
+              </div>
+
+              {avatarError && (
+                <div className="rounded-lg bg-red-500/10 border border-red-500/25 p-3 text-xs text-red-400 text-center leading-relaxed">
+                  {avatarError}
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-3 pt-2 border-t border-zinc-900">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditProfilePic(false);
+                    setCustomAvatarUrl('');
+                    setAvatarError('');
+                  }}
+                  className="px-4 py-2 text-sm font-semibold text-zinc-400 hover:text-zinc-200"
+                  id="btn-cancel-avatar"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-amber-500 hover:bg-amber-600 text-zinc-950 px-5 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center space-x-1"
+                  id="btn-save-avatar"
+                >
+                  <span>Apply Avatar</span>
                 </button>
               </div>
             </form>

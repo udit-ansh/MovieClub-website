@@ -74,7 +74,24 @@ export default function App() {
         setScreenings(list);
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'screenings');
+      const errInfo = {
+        error: error instanceof Error ? error.message : String(error),
+        authInfo: {
+          userId: auth.currentUser?.uid,
+          email: auth.currentUser?.email,
+          emailVerified: auth.currentUser?.emailVerified,
+          isAnonymous: auth.currentUser?.isAnonymous,
+          tenantId: auth.currentUser?.tenantId,
+          providerInfo: auth.currentUser?.providerData?.map(provider => ({
+            providerId: provider.providerId,
+            email: provider.email,
+          })) || []
+        },
+        operationType: OperationType.LIST,
+        path: 'screenings'
+      };
+      console.error('Firestore Error: ', JSON.stringify(errInfo));
+      console.warn('[Firebase] screenings onSnapshot error (handled gracefully):', error);
     });
 
     return () => unsubscribe();
@@ -104,7 +121,24 @@ export default function App() {
         setPastMovies(list);
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'pastMovies');
+      const errInfo = {
+        error: error instanceof Error ? error.message : String(error),
+        authInfo: {
+          userId: auth.currentUser?.uid,
+          email: auth.currentUser?.email,
+          emailVerified: auth.currentUser?.emailVerified,
+          isAnonymous: auth.currentUser?.isAnonymous,
+          tenantId: auth.currentUser?.tenantId,
+          providerInfo: auth.currentUser?.providerData?.map(provider => ({
+            providerId: provider.providerId,
+            email: provider.email,
+          })) || []
+        },
+        operationType: OperationType.LIST,
+        path: 'pastMovies'
+      };
+      console.error('Firestore Error: ', JSON.stringify(errInfo));
+      console.warn('[Firebase] pastMovies onSnapshot error (handled gracefully):', error);
     });
 
     return () => unsubscribe();
@@ -134,7 +168,24 @@ export default function App() {
         setRecommendations(list);
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'recommendations');
+      const errInfo = {
+        error: error instanceof Error ? error.message : String(error),
+        authInfo: {
+          userId: auth.currentUser?.uid,
+          email: auth.currentUser?.email,
+          emailVerified: auth.currentUser?.emailVerified,
+          isAnonymous: auth.currentUser?.isAnonymous,
+          tenantId: auth.currentUser?.tenantId,
+          providerInfo: auth.currentUser?.providerData?.map(provider => ({
+            providerId: provider.providerId,
+            email: provider.email,
+          })) || []
+        },
+        operationType: OperationType.LIST,
+        path: 'recommendations'
+      };
+      console.error('Firestore Error: ', JSON.stringify(errInfo));
+      console.warn('[Firebase] recommendations onSnapshot error (handled gracefully):', error);
     });
 
     return () => unsubscribe();
@@ -150,6 +201,7 @@ export default function App() {
 
         if (extMatch || isDevUser) {
           const name = firebaseUser.displayName || 'IISER-K Member';
+          const photoURL = firebaseUser.photoURL || undefined;
           let role: 'admin' | 'student' = 'student';
           if (
             email === 'movie.activity@iiserkol.ac.in' || 
@@ -159,7 +211,7 @@ export default function App() {
           ) {
             role = 'admin';
           }
-          const userObj: User = { email, name, role };
+          const userObj: User = { email, name, role, photoURL };
           setCurrentUser(userObj);
           localStorage.setItem('iiser_movie_user', JSON.stringify(userObj));
           if (role === 'admin') {
@@ -173,8 +225,8 @@ export default function App() {
   }, []);
 
   // Auth Callbacks
-  const handleLogin = (email: string, name: string, role: 'admin' | 'student') => {
-    const userObj: User = { email, name, role };
+  const handleLogin = (email: string, name: string, role: 'admin' | 'student', photoURL?: string) => {
+    const userObj: User = { email, name, role, photoURL };
     setCurrentUser(userObj);
     localStorage.setItem('iiser_movie_user', JSON.stringify(userObj));
     if (role === 'admin') {
@@ -186,6 +238,16 @@ export default function App() {
     setCurrentUser(null);
     localStorage.removeItem('iiser_movie_user');
     setAdminMode(false);
+  };
+
+  const handleUpdateProfile = (updatedFields: Partial<User>) => {
+    if (!currentUser) return;
+    const userObj: User = {
+      ...currentUser,
+      ...updatedFields
+    };
+    setCurrentUser(userObj);
+    localStorage.setItem('iiser_movie_user', JSON.stringify(userObj));
   };
 
   // Admin Actions for Schedule (Real-time synced updates to database)
@@ -285,6 +347,7 @@ export default function App() {
         currentUser={currentUser}
         onLogin={handleLogin}
         onLogout={handleLogout}
+        onUpdateProfile={handleUpdateProfile}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         adminMode={adminMode}

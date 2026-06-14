@@ -57,6 +57,7 @@ export interface User {
   email: string;
   name: string;
   role: 'admin' | 'student';
+  photoURL?: string;
 }
 
 export interface TriviaQuestion {
