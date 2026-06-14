@@ -83,7 +83,7 @@ export default function Navbar({
       
       // Enforce the rule that students can only Google login with their institute iiserkol.ac.in email
       const extMatch = email.endsWith('@iiserkol.ac.in');
-      const isDevUser = email === 'uditansh2007@gmail.com';
+      const isDevUser = email === 'uditansh2007@gmail.com' || email === 'uditansh2507@gmail.com';
       
       if (!extMatch && !isDevUser) {
         await fbSignOut(auth);
@@ -92,7 +92,12 @@ export default function Navbar({
       }
       
       let role: 'admin' | 'student' = 'student';
-      if (email === 'movie.activity@iiserkol.ac.in' || email.startsWith('admin.')) {
+      if (
+        email === 'movie.activity@iiserkol.ac.in' || 
+        email === 'uditansh2007@gmail.com' || 
+        email === 'uditansh2507@gmail.com' || 
+        email.startsWith('admin.')
+      ) {
         role = 'admin';
       }
       

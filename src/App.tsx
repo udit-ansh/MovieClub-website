@@ -52,6 +52,7 @@ export default function App() {
     const unsubscribe = onSnapshot(screeningsCol, (snapshot) => {
       if (snapshot.empty) {
         console.log('[Firebase] Screenings collection is empty. Attempting seed...');
+        setScreenings(initialScreenings);
         initialScreenings.forEach(async (s) => {
           try {
             await setDoc(doc(db, 'screenings', s.id), s);
@@ -85,6 +86,7 @@ export default function App() {
     const unsubscribe = onSnapshot(pastCol, (snapshot) => {
       if (snapshot.empty) {
         console.log('[Firebase] Past movies collection is empty. Attempting seed...');
+        setPastMovies(initialPastMovies);
         initialPastMovies.forEach(async (m) => {
           try {
             await setDoc(doc(db, 'pastMovies', m.id), m);
@@ -114,6 +116,7 @@ export default function App() {
     const unsubscribe = onSnapshot(recsCol, (snapshot) => {
       if (snapshot.empty) {
         console.log('[Firebase] Recommendations collection is empty. Attempting seed...');
+        setRecommendations(initialRecommendations);
         initialRecommendations.forEach(async (r) => {
           try {
             await setDoc(doc(db, 'recommendations', r.id), r);
@@ -148,7 +151,12 @@ export default function App() {
         if (extMatch || isDevUser) {
           const name = firebaseUser.displayName || 'IISER-K Member';
           let role: 'admin' | 'student' = 'student';
-          if (email === 'movie.activity@iiserkol.ac.in' || email.startsWith('admin.')) {
+          if (
+            email === 'movie.activity@iiserkol.ac.in' || 
+            email === 'uditansh2007@gmail.com' || 
+            email === 'uditansh2507@gmail.com' || 
+            email.startsWith('admin.')
+          ) {
             role = 'admin';
           }
           const userObj: User = { email, name, role };

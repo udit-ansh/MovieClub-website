@@ -167,10 +167,13 @@ export default function PastScreenings({ pastMovies, onAddReview, currentUser }:
                 {/* Poster Box */}
                 <div className="relative w-24 h-36 flex-shrink-0 rounded-lg overflow-hidden border border-zinc-850 bg-zinc-900 shadow-md">
                   <img
-                    src={movie.posterUrl}
+                    src={movie.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300'}
                     alt={movie.title}
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-102"
+                    onError={(e) => {
+                      e.currentTarget.src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300';
+                    }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/20 to-transparent"></div>
                 </div>

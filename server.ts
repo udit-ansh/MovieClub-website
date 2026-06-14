@@ -29,11 +29,13 @@ async function startServer() {
       return res.status(400).json({ error: "movieQuery is required" });
     }
 
+    console.log(`[Server] Resolving movie details for query/link: "${movieQuery}"`);
+
     try {
       // Fetch rich metadata using Structured JSON Schema and Google Search Grounding to find actual references
       const gResponse = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: `Search Google for the movie: "${movieQuery}". Find the official release year, director, runtime, genres, a synopsis, its exact Letterboxd slug (e.g., 'tumbbad', 'perfect-days', '2001-a-space-odyssey'), and its exact Wikipedia page title (e.g., 'Tumbbad (film)', 'Perfect Days'). Also find a widescreen photographic snapshot backdrop URL.`,
+        contents: `Search Google for the movie details: "${movieQuery}". If this is a URL (such as an IMDb link like imdb.com/title/... or a Letterboxd link like letterboxd.com/film/...), resolve the exact movie from that link. Find the official release year, director, runtime (e.g. '130 min'), genres, a synopsis, its exact Letterboxd slug (e.g., 'tumbbad', 'perfect-days'), and its exact Wikipedia page title (e.g., 'Tumbbad (film)'). Also find a widescreen photographic snapshot backdrop URL and a high-quality poster (ideally from TMDB/Wikipedia).`,
         config: {
           systemInstruction: "You are a professional cinema curator for the IISER Kolkata Movie Club. Search movie archives and retrieve precise metadata. Return the synopsis/description concisely (approx 100-150 words). Format the genre as a comma-separated list.",
           tools: [{ googleSearch: {} }],
@@ -47,9 +49,9 @@ async function startServer() {
               director: { type: Type.STRING, description: "Director of the film." },
               duration: { type: Type.STRING, description: "Runtime format, e.g. '130 min' or '1h 55m'." },
               genre: { type: Type.STRING, description: "Primary genre(s) formatted as a comma-separated list, e.g. 'Drama, Thriller, Sci-Fi'." },
-              letterboxdSlug: { type: Type.STRING, description: "The lowercase official Letterboxd URL slug, e.g. 'tumbbad', 'perfect-days', '2001-a-space-odyssey'." },
+              letterboxdSlug: { type: Type.STRING, description: "The lowercase official Letterboxd URL slug, e.g. 'tumbbad', 'perfect-days'." },
               wikipediaTitle: { type: Type.STRING, description: "The exact Wikipedia title suitable for URL encoding, e.g. 'Tumbbad (film)'." },
-              posterUrl: { type: Type.STRING, description: "A fallback high-quality movie poster URL." },
+              posterUrl: { type: Type.STRING, description: "A high-quality movie poster URL. Prefer TMDB poster URL if found." },
               backdropUrl: { type: Type.STRING, description: "Widescreen background image/snapshot of the movie." }
             },
             required: ["title", "year", "description", "director", "duration", "genre", "letterboxdSlug", "wikipediaTitle", "posterUrl", "backdropUrl"]
@@ -67,7 +69,7 @@ async function startServer() {
       // Multi-layer actual movie poster retriever compiled server-side
       let realPosterUrl: string | null = null;
 
-      // 1. Scraping official Letterboxd Open Graph tags
+      // 1. Scraping official Letterboxd Open Graph tags if possible
       if (movieData.letterboxdSlug) {
         try {
           const cleanSlug = movieData.letterboxdSlug.toLowerCase().trim().replace(/[^a-z0-9\-]/g, '');
@@ -129,6 +131,60 @@ async function startServer() {
     } catch (e: any) {
       console.error("Gemini Movie Details Fetch Failure:", e);
       res.status(500).json({ error: e.message || "Failed to retrieve cinema metadata." });
+    }
+  });
+
+  // API Endpoint to search movies and provide real-time suggestions using Gemini or Web Search Grounding
+  app.post("/api/search-movies", async (req, res) => {
+    const { query } = req.body;
+    if (!query || query.trim().length < 2) {
+      return res.json([]);
+    }
+
+    console.log(`[Server Autocomplete] Searching for partial query: "${query}"`);
+
+    try {
+      const isUrl = query.toLowerCase().includes("imdb.com/") || query.toLowerCase().includes("letterboxd.com/");
+      
+      const gResponse = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: `Search Google for movies matching: "${query}". Return a structured list of up to 4 most matching movies. If the query is an IMDb link or Letterboxd film link, resolve details for that single exact movie. For each movie, find its title, year, director, runtime (e.g. '120 min'), genre(s) comma-separated, a short 1-sentence description, a Letterboxd slug (e.g. 'inception'), a Wikipedia title, and a high-quality poster (prefer TMDB URLs or high-quality posters from search).`,
+        config: {
+          systemInstruction: "You are a professional cinema curator. Provide search suggestions for matches with precise title, year, director, runtime duration, comma-separated genres, and standard web poster artwork URLs.",
+          tools: [{ googleSearch: {} }],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                year: { type: Type.INTEGER },
+                description: { type: Type.STRING, description: "Concise 1-sentence synopsis." },
+                director: { type: Type.STRING },
+                duration: { type: Type.STRING, description: "e.g. '120 min'" },
+                genre: { type: Type.STRING, description: "e.g. 'Drama, Thriller'" },
+                letterboxdSlug: { type: Type.STRING },
+                wikipediaTitle: { type: Type.STRING },
+                posterUrl: { type: Type.STRING },
+                backdropUrl: { type: Type.STRING }
+              },
+              required: ["title", "year", "description", "director", "duration", "genre", "letterboxdSlug", "wikipediaTitle", "posterUrl", "backdropUrl"]
+            }
+          }
+        }
+      });
+
+      const textOutput = gResponse.text;
+      if (!textOutput) {
+        return res.json([]);
+      }
+
+      const moviesList = JSON.parse(textOutput.trim());
+      res.json(moviesList);
+    } catch (e: any) {
+      console.error("Gemini Movie Suggestion Failure:", e);
+      res.status(500).json({ error: e.message || "Failed to retrieve suggestion results." });
     }
   });
 

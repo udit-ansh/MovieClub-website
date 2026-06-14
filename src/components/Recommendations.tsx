@@ -87,52 +87,130 @@ export default function Recommendations({
     onVoteRecommendation(id, currentUser.email);
   };
 
-  const handleLetterboxdInputChange = (val: string) => {
+  const handleLetterboxdInputChange = async (val: string) => {
     setLetterboxdInput(val);
-    
-    // Check if it's a Letterboxd URL
-    if (val.toLowerCase().includes('letterboxd.com/film/')) {
-      const parsed = parseLetterboxdUrlToMovie(val);
-      setTitle(parsed.title);
-      setYear(parsed.year);
-      
-      // Look up if we have the full details locally
-      const localMatch = findMovieByUrlOrSlug(val);
-      if (localMatch) {
-        setDirector(localMatch.director);
-        setGenre(localMatch.genre.join(', '));
-        setSelectedMovie(localMatch);
-      } else {
-        setDirector('');
-        setGenre('Drama');
-        setSelectedMovie(null);
-      }
+    const query = val.trim();
+    if (!query) {
       setLbSuggestions([]);
       return;
     }
 
-    // Otherwise, treat as title search inside Letterboxd database
-    if (val.trim().length >= 2) {
-      const query = val.toLowerCase().trim();
-      const filtered = letterboxdMovies.filter(m => 
-        m.title.toLowerCase().includes(query) || 
-        m.director.toLowerCase().includes(query) ||
-        m.genre.some(g => g.toLowerCase().includes(query))
-      );
-      setLbSuggestions(filtered);
-    } else {
-      setLbSuggestions([]);
+    const lowerQuery = query.toLowerCase();
+
+    // 1. Detect if it's an IMDb link or Letterboxd link
+    const isUrl = lowerQuery.includes('letterboxd.com/film/') || lowerQuery.includes('imdb.com/title/');
+    if (isUrl) {
+      setIsAiLoading(true);
+      setAiError('');
+      try {
+        const res = await fetch('/api/movie-details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ movieQuery: query })
+        });
+        if (res.ok) {
+          const detail = await res.json();
+          if (detail && detail.title) {
+            setTitle(detail.title);
+            setDirector(detail.director || '');
+            if (detail.year) setYear(Number(detail.year));
+            if (detail.genre) setGenre(detail.genre);
+            if (detail.posterUrl) setPosterUrl(detail.posterUrl);
+            
+            setSuccessMsg(`✨ AI successfully resolved & populated details for "${detail.title}"!`);
+            setTimeout(() => setSuccessMsg(''), 4500);
+          }
+        } else {
+          setAiError('Could not auto-scrape this link. Please enter manually.');
+        }
+      } catch (err: any) {
+        console.warn("Autofill from link failed:", err);
+      } finally {
+        setIsAiLoading(false);
+      }
+      return;
+    }
+
+    // 2. Local fallback matches first
+    const localFiltered = letterboxdMovies.filter(m => 
+      m.title.toLowerCase().includes(lowerQuery) || 
+      m.director.toLowerCase().includes(lowerQuery) ||
+      m.genre.some(g => g.toLowerCase().includes(lowerQuery))
+    );
+
+    const formattedLocal: any[] = localFiltered.map(m => ({
+      id: m.id,
+      title: m.title,
+      year: m.year,
+      description: m.synopsis,
+      director: m.director,
+      duration: m.runtime,
+      genre: m.genre.join(', '),
+      letterboxdSlug: m.id,
+      wikipediaTitle: '',
+      posterUrl: m.posterUrl,
+      backdropUrl: m.backdropUrl
+    }));
+    setLbSuggestions(formattedLocal);
+
+    // 3. API Remote grounding suggestions
+    if (query.length >= 2) {
+      setIsAiLoading(true);
+      try {
+        const response = await fetch('/api/search-movies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query })
+        });
+        if (response.ok) {
+          const apiMovies = await response.json();
+          if (Array.isArray(apiMovies) && apiMovies.length > 0) {
+            // Merge unique
+            const merged = [...apiMovies];
+            formattedLocal.forEach(loc => {
+              const duplicated = merged.some(api => api.title.toLowerCase() === loc.title.toLowerCase());
+              if (!duplicated) {
+                merged.push(loc);
+              }
+            });
+            setLbSuggestions(merged);
+          }
+        }
+      } catch (e) {
+        console.warn("API Autocomplete Fetch fail:", e);
+      } finally {
+        setIsAiLoading(false);
+      }
     }
   };
 
-  const selectLetterboxdMovie = (movie: LetterboxdMovie) => {
+  const selectLetterboxdMovie = (movie: any) => {
     setTitle(movie.title);
-    setDirector(movie.director);
-    setYear(movie.year);
-    setGenre(movie.genre.join(', '));
-    setLetterboxdInput(movie.letterboxdUrl);
-    setSelectedMovie(movie);
+    setDirector(movie.director || '');
+    if (movie.year) setYear(Number(movie.year));
+    if (movie.genre) setGenre(movie.genre);
+    if (movie.posterUrl) setPosterUrl(movie.posterUrl);
+    
+    setLetterboxdInput(movie.title);
     setLbSuggestions([]);
+
+    // Set interactive visual preview block
+    setSelectedMovie({
+      id: movie.letterboxdSlug || 'custom-movie',
+      title: movie.title,
+      director: movie.director || '',
+      year: Number(movie.year) || 2024,
+      runtime: movie.duration || '120 min',
+      genre: (movie.genre || '').split(',').map((g: string) => g.trim()),
+      language: 'English (with Subs)',
+      synopsis: movie.description || movie.synopsis || '',
+      posterUrl: movie.posterUrl || '',
+      backdropUrl: movie.backdropUrl || '',
+      letterboxdUrl: `https://letterboxd.com/film/${movie.letterboxdSlug || 'custom-movie'}/`
+    });
+
+    setSuccessMsg(`✨ Successfully populated details for "${movie.title}"!`);
+    setTimeout(() => setSuccessMsg(''), 4500);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -302,10 +380,13 @@ export default function Recommendations({
                 {rec.posterUrl && (
                   <div className="w-24 h-36 shrink-0 rounded-lg overflow-hidden border border-zinc-900 bg-zinc-900 shadow-md self-center sm:self-start">
                     <img 
-                      src={rec.posterUrl} 
+                      src={rec.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300'} 
                       alt={rec.title} 
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      onError={(e) => {
+                        e.currentTarget.src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300';
+                      }}
                     />
                   </div>
                 )}
@@ -404,45 +485,52 @@ export default function Recommendations({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4 text-sm text-zinc-300">
-              
-              {/* Intelligent Letterboxd autofill search bar */}
+                  {/* Intelligent Cinema Autofill & Search Bar */}
               <div className="bg-zinc-900/80 border border-zinc-800 p-4 rounded-xl space-y-3">
                 <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-amber-500 flex items-center gap-1 px-1.5 py-0.5 bg-amber-500/5 rounded border border-amber-500/10 font-bold uppercase tracking-wider text-[10px]">
-                    🍿 LETTERBOXD SEARCH & AUTOFILL
+                  <span className="text-amber-500 flex items-center gap-1.5 px-1.5 py-0.5 bg-amber-500/5 rounded border border-amber-500/10 font-bold uppercase tracking-wider text-[10px]">
+                    🍿 SMART CINEMA AUTOFILL & SEARCH
                   </span>
-                  <span className="text-zinc-500 text-[10px]/none">Cinephile Auto-Select</span>
+                  <span className="text-zinc-550 text-[10px]/none">Real-time API suggestions</span>
                 </div>
                 
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 text-zinc-500">
-                    <Link2 className="h-3.5 w-3.5" />
+                    <Link2 className="h-4 w-4" />
                   </span>
                   <input
                     type="text"
                     value={letterboxdInput}
                     onChange={(e) => handleLetterboxdInputChange(e.target.value)}
-                    placeholder="Type movie name (e.g. Inception) or paste film URL"
-                    className="w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 pl-9 pr-3 text-xs text-zinc-100 placeholder-zinc-500 focus:border-amber-500/50 focus:outline-none"
+                    placeholder="Type film name (e.g. Parasite, Inception) or paste Letterboxd/IMDb link"
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 pl-9 pr-8 text-xs text-zinc-100 placeholder-zinc-500 focus:border-amber-500/50 focus:outline-none"
                   />
+                  {isAiLoading && (
+                    <span className="absolute right-3 top-2.5 flex items-center h-4 w-4">
+                      <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-amber-500"></span>
+                    </span>
+                  )}
 
                   {lbSuggestions.length > 0 && (
-                    <div className="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl divide-y divide-zinc-900">
-                      {lbSuggestions.map(movie => (
+                    <div className="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl divide-y divide-zinc-900 font-sans">
+                      {lbSuggestions.map((movie, index) => (
                         <button
-                          key={movie.id}
+                          key={`${movie.title}-${movie.year}-${index}`}
                           type="button"
                           onClick={() => selectLetterboxdMovie(movie)}
-                          className="w-full px-3 py-2.5 text-left text-xs hover:bg-zinc-900 flex items-center gap-3 transition-colors cursor-pointer"
+                          className="w-full px-3 py-2 text-left text-xs hover:bg-zinc-900 flex items-center gap-3 transition-colors cursor-pointer"
                         >
                           <img 
-                            src={movie.posterUrl} 
-                            className="w-7 h-10 object-cover rounded shrink-0 bg-zinc-800 border border-zinc-800/50" 
+                            src={movie.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=100'} 
+                            className="w-7 h-10 object-cover rounded shrink-0 bg-zinc-850 border border-zinc-800/50" 
                             referrerPolicy="no-referrer" 
+                            onError={(e) => {
+                              e.currentTarget.src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=100';
+                            }}
                           />
-                          <div>
-                            <div className="font-bold text-zinc-200">{movie.title} <span className="text-zinc-550 font-normal">({movie.year})</span></div>
-                            <div className="text-[10px] text-zinc-500 font-mono mt-0.5">Dir: {movie.director} • {movie.genre.slice(0, 2).join(', ')}</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-zinc-200 truncate">{movie.title} <span className="text-zinc-550 font-normal">({movie.year})</span></div>
+                            <div className="text-[10px] text-zinc-500 font-mono mt-0.5 truncate">Dir: {movie.director || 'Unknown'} • {movie.genre || 'Cinema'}</div>
                           </div>
                         </button>
                       ))}
@@ -450,18 +538,25 @@ export default function Recommendations({
                   )}
                 </div>
 
+                <p className="text-[10px] text-zinc-550 leading-normal leading-relaxed font-sans">
+                  💡 Hint: Paste any official IMDb title link URL (such as <span className="text-zinc-400 font-mono">imdb.com/title/tt1130884/</span>) or any Letterboxd film link, and our live scraper will load details & poster art immediately!
+                </p>
+
                 {selectedMovie && (
-                  <div className="flex items-start gap-3 bg-zinc-950/65 p-2.5 rounded-lg border border-zinc-800">
+                  <div className="flex items-start gap-4 bg-zinc-950/75 p-3 rounded-lg border border-zinc-800 animate-fadeIn">
                     <img 
-                      src={selectedMovie.posterUrl} 
-                      className="w-10 h-14 object-cover rounded border border-zinc-800 shrink-0" 
+                      src={selectedMovie.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=100'} 
+                      className="w-12 h-18 object-cover rounded border border-zinc-850 shrink-0 shadow-md" 
                       referrerPolicy="no-referrer" 
+                      onError={(e) => {
+                        e.currentTarget.src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=100';
+                      }}
                     />
-                    <div className="text-xs space-y-0.5">
-                      <div className="font-bold text-amber-500 font-mono text-[10px] uppercase">Selected Masterpiece</div>
-                      <div className="font-serif font-bold text-zinc-100 leading-tight">{selectedMovie.title} ({selectedMovie.year})</div>
-                      <div className="text-[11px] text-zinc-400">Director: {selectedMovie.director}</div>
-                      <div className="text-[10px] text-zinc-500 font-mono">{selectedMovie.genre.join(', ')}</div>
+                    <div className="text-xs space-y-0.5 min-w-0 flex-1">
+                      <div className="font-bold text-amber-500 font-mono text-[9px] uppercase tracking-wider">Active Import Profile</div>
+                      <div className="font-serif font-bold text-zinc-100 leading-tight truncate">{selectedMovie.title} ({selectedMovie.year})</div>
+                      <div className="text-[11px] text-zinc-400 truncate">Director: {selectedMovie.director}</div>
+                      <div className="text-[10px] text-zinc-500 font-mono max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{selectedMovie.genre.join(', ')}</div>
                     </div>
                   </div>
                 )}
@@ -499,7 +594,14 @@ export default function Recommendations({
                   {aiError && <p className="text-[10px] text-red-400 mt-1">{aiError}</p>}
                   {posterUrl && (
                     <div className="mt-2.5 flex items-center gap-2.5 bg-zinc-900/40 p-1.5 rounded-lg border border-zinc-850">
-                      <img src={posterUrl} className="w-8 h-11 object-cover rounded border border-zinc-800" referrerPolicy="no-referrer" />
+                      <img 
+                        src={posterUrl} 
+                        className="w-8 h-11 object-cover rounded border border-zinc-800" 
+                        referrerPolicy="no-referrer" 
+                        onError={(e) => {
+                          e.currentTarget.src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=100';
+                        }}
+                      />
                       <div>
                         <span className="block text-[9px] font-bold font-mono text-amber-500">POSTER ACQUIRED</span>
                         <span className="block text-[10px] text-zinc-400">Artwork loaded from cinema database</span>
