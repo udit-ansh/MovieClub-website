@@ -14,7 +14,8 @@ import {
   doc, 
   setDoc, 
   updateDoc, 
-  deleteDoc 
+  deleteDoc,
+  writeBatch
 } from 'firebase/firestore';
 
 import Navbar from './components/Navbar';
@@ -22,6 +23,11 @@ import ScreeningSchedule from './components/ScreeningSchedule';
 import PastScreenings from './components/PastScreenings';
 import Recommendations from './components/Recommendations';
 import TriviaGame from './components/TriviaGame';
+
+// Prevents reactive re-seeding triggers when an admin empties the database collections manually
+let screeningsSeedAttempted = false;
+let pastMoviesSeedAttempted = false;
+let recommendationsSeedAttempted = false;
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -49,17 +55,27 @@ export default function App() {
   // 1. Subscribe to Screenings
   useEffect(() => {
     const screeningsCol = collection(db, 'screenings');
-    const unsubscribe = onSnapshot(screeningsCol, (snapshot) => {
+    const unsubscribe = onSnapshot(screeningsCol, async (snapshot) => {
       if (snapshot.empty) {
-        console.log('[Firebase] Screenings collection is empty. Attempting seed...');
-        setScreenings(initialScreenings);
-        initialScreenings.forEach(async (s) => {
+        if (!screeningsSeedAttempted) {
+          screeningsSeedAttempted = true;
+          console.log('[Firebase] Screenings database is newly provisioned. Performing atomic batch seed...');
+          setScreenings(initialScreenings);
           try {
-            await setDoc(doc(db, 'screenings', s.id), s);
+            const batch = writeBatch(db);
+            initialScreenings.forEach((s) => {
+              batch.set(doc(db, 'screenings', s.id), s);
+            });
+            await batch.commit();
+            console.log('[Firebase] Screenings successfully seeded atomically.');
           } catch (e) {
-            console.warn(`[Firebase] Seeding screening ${s.id} failed:`, e);
+            console.warn('[Firebase] Atomic seeding of screenings failed:', e);
           }
-        });
+        } else {
+          // If the admin purposely deleted all screenings, just render an empty list instead of re-importing defaults!
+          console.log('[Firebase] Screenings collection manually emptied by administrator.');
+          setScreenings([]);
+        }
       } else {
         const list: Screening[] = [];
         snapshot.forEach((docSnap) => {
@@ -100,17 +116,26 @@ export default function App() {
   // 2. Subscribe to Past Movies
   useEffect(() => {
     const pastCol = collection(db, 'pastMovies');
-    const unsubscribe = onSnapshot(pastCol, (snapshot) => {
+    const unsubscribe = onSnapshot(pastCol, async (snapshot) => {
       if (snapshot.empty) {
-        console.log('[Firebase] Past movies collection is empty. Attempting seed...');
-        setPastMovies(initialPastMovies);
-        initialPastMovies.forEach(async (m) => {
+        if (!pastMoviesSeedAttempted) {
+          pastMoviesSeedAttempted = true;
+          console.log('[Firebase] Past movies database is newly provisioned. Performing atomic batch seed...');
+          setPastMovies(initialPastMovies);
           try {
-            await setDoc(doc(db, 'pastMovies', m.id), m);
+            const batch = writeBatch(db);
+            initialPastMovies.forEach((m) => {
+              batch.set(doc(db, 'pastMovies', m.id), m);
+            });
+            await batch.commit();
+            console.log('[Firebase] Past movies successfully seeded atomically.');
           } catch (e) {
-            console.warn(`[Firebase] Seeding past movie ${m.id} failed:`, e);
+            console.warn('[Firebase] Atomic seeding of past movies failed:', e);
           }
-        });
+        } else {
+          console.log('[Firebase] Past Movies collection manually emptied.');
+          setPastMovies([]);
+        }
       } else {
         const list: PastMovie[] = [];
         snapshot.forEach((docSnap) => {
@@ -147,17 +172,26 @@ export default function App() {
   // 3. Subscribe to Recommendations
   useEffect(() => {
     const recsCol = collection(db, 'recommendations');
-    const unsubscribe = onSnapshot(recsCol, (snapshot) => {
+    const unsubscribe = onSnapshot(recsCol, async (snapshot) => {
       if (snapshot.empty) {
-        console.log('[Firebase] Recommendations collection is empty. Attempting seed...');
-        setRecommendations(initialRecommendations);
-        initialRecommendations.forEach(async (r) => {
+        if (!recommendationsSeedAttempted) {
+          recommendationsSeedAttempted = true;
+          console.log('[Firebase] Recommendations database is newly provisioned. Performing atomic batch seed...');
+          setRecommendations(initialRecommendations);
           try {
-            await setDoc(doc(db, 'recommendations', r.id), r);
+            const batch = writeBatch(db);
+            initialRecommendations.forEach((r) => {
+              batch.set(doc(db, 'recommendations', r.id), r);
+            });
+            await batch.commit();
+            console.log('[Firebase] Recommendations successfully seeded atomically.');
           } catch (e) {
-            console.warn(`[Firebase] Seeding recommendation ${r.id} failed:`, e);
+            console.warn('[Firebase] Atomic seeding of recommendations failed:', e);
           }
-        });
+        } else {
+          console.log('[Firebase] Recommendations collection manually emptied.');
+          setRecommendations([]);
+        }
       } else {
         const list: Recommendation[] = [];
         snapshot.forEach((docSnap) => {

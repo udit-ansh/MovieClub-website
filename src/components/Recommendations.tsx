@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Plus, MessageSquareHeart, Search, ArrowUp, ThumbsUp, Calendar, 
-  Filter, Sparkles, User, HelpCircle, Film, BookOpen, AlertCircle, Link2
+  Filter, Sparkles, User, HelpCircle, Film, BookOpen, AlertCircle, Link2, Upload
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Recommendation } from '../types';
@@ -33,6 +33,33 @@ export default function Recommendations({
   const [posterUrl, setPosterUrl] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Poster image file upload
+  const [posterFileError, setPosterFileError] = useState('');
+
+  const handlePosterFileUpload = (file: File) => {
+    setPosterFileError('');
+    if (!file.type.startsWith('image/')) {
+      setPosterFileError('Please select a valid image file (PNG, JPG, WebP, SVG).');
+      return;
+    }
+    if (file.size > 800 * 1024) {
+      setPosterFileError('File size is too large. Image must be under 800KB for database performance.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result && typeof e.target.result === 'string') {
+        setPosterUrl(e.target.result);
+        setSelectedMovie(null);
+      }
+    };
+    reader.onerror = () => {
+      setPosterFileError('Failed to parse uploaded image.');
+    };
+    reader.readAsDataURL(file);
+  };
 
   // AI loading and error states
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -592,22 +619,67 @@ export default function Recommendations({
                     className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-550 focus:border-amber-500/50 focus:outline-none"
                   />
                   {aiError && <p className="text-[10px] text-red-400 mt-1">{aiError}</p>}
-                  {posterUrl && (
-                    <div className="mt-2.5 flex items-center gap-2.5 bg-zinc-900/40 p-1.5 rounded-lg border border-zinc-850">
-                      <img 
-                        src={posterUrl} 
-                        className="w-8 h-11 object-cover rounded border border-zinc-800" 
-                        referrerPolicy="no-referrer" 
-                        onError={(e) => {
-                          e.currentTarget.src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=100';
+                  
+                  {/* Smart Poster Artwork Selector */}
+                  <div className="mt-2.5 space-y-1.5">
+                    <label className="block text-[10px] font-mono text-zinc-400">POSTER ARTWORK (IMAGE FILE OR URL)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        placeholder="Paste image link"
+                        value={posterUrl}
+                        onChange={(e) => {
+                          setPosterUrl(e.target.value);
+                          setSelectedMovie(null);
                         }}
+                        className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900/60 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
                       />
-                      <div>
-                        <span className="block text-[9px] font-bold font-mono text-amber-500">POSTER ACQUIRED</span>
-                        <span className="block text-[10px] text-zinc-400">Artwork loaded from cinema database</span>
-                      </div>
+                      <label className="flex items-center gap-1 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 rounded px-2.5 py-1.5 text-[10px] font-mono font-bold text-zinc-200 cursor-pointer transition-all shrink-0">
+                        <Upload className="h-3 w-3 text-amber-500" />
+                        <span>UPLOAD FILE</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handlePosterFileUpload(file);
+                          }}
+                        />
+                      </label>
                     </div>
-                  )}
+                    {posterFileError && (
+                      <p className="text-[9px] text-red-400 font-mono">{posterFileError}</p>
+                    )}
+                    {posterUrl && (
+                      <div className="flex items-center gap-2 bg-zinc-900/40 p-1.5 rounded border border-zinc-850 leading-normal">
+                        <img 
+                          src={posterUrl} 
+                          alt="Poster Preview" 
+                          className="w-7 h-10 object-cover rounded border border-zinc-805 shrink-0 bg-zinc-900" 
+                          referrerPolicy="no-referrer" 
+                          onError={(e) => {
+                            e.currentTarget.src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=100';
+                          }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <span className="block text-[9px] font-bold font-mono text-amber-500">POSTER PREVIEW</span>
+                          <span className="block text-[9px] text-zinc-500 truncate font-mono">
+                            {posterUrl.startsWith('data:') ? 'Custom uploaded (Base64)' : posterUrl}
+                          </span>
+                        </div>
+                        {posterUrl.startsWith('data:') && (
+                          <button
+                            type="button"
+                            onClick={() => setPosterUrl('')}
+                            className="text-[9px] text-red-400 hover:text-red-300 font-mono px-1 border border-red-500/10 hover:border-red-500/20 bg-red-500/5 hover:bg-red-500/10 rounded cursor-pointer transition-all shrink-0"
+                          >
+                            RESET
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>

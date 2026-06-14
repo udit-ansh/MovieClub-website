@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Calendar, Clock, MapPin, Film, Plus, Edit2, Trash2, Globe, Eye,
-  Clock3, Star, Sparkles, ExternalLink, Bell, Check, X, Tag, Link2
+  Clock3, Star, Sparkles, ExternalLink, Bell, Check, X, Tag, Link2, Upload
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Screening } from '../types';
@@ -50,6 +50,58 @@ export default function ScreeningSchedule({
 
   // Local reminders simulation status
   const [reminders, setReminders] = useState<Record<string, boolean>>({});
+
+  // Poster & Backdrop image upload handlers
+  const [posterFileError, setPosterFileError] = useState('');
+  const [backdropFileError, setBackdropFileError] = useState('');
+
+  const handlePosterFileUpload = (file: File) => {
+    setPosterFileError('');
+    if (!file.type.startsWith('image/')) {
+      setPosterFileError('Please select an image file (PNG, JPG, WebP, SVG).');
+      return;
+    }
+    if (file.size > 800 * 1024) {
+      setPosterFileError('File size is too large. Image must be under 800KB for database performance.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result && typeof e.target.result === 'string') {
+        setPosterUrl(e.target.result);
+        setSelectedMovie(null);
+      }
+    };
+    reader.onerror = () => {
+      setPosterFileError('Failed to parse upload asset data.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleBackdropFileUpload = (file: File) => {
+    setBackdropFileError('');
+    if (!file.type.startsWith('image/')) {
+      setBackdropFileError('Please select an image file (PNG, JPG, WebP, SVG).');
+      return;
+    }
+    if (file.size > 800 * 1024) {
+      setBackdropFileError('File size is too large. Backdrop must be under 800KB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result && typeof e.target.result === 'string') {
+        setBackdropUrl(e.target.result);
+        setSelectedMovie(null);
+      }
+    };
+    reader.onerror = () => {
+      setBackdropFileError('Failed to parse backdrop upload.');
+    };
+    reader.readAsDataURL(file);
+  };
 
   // AI autofill state
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -805,19 +857,127 @@ export default function ScreeningSchedule({
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-mono text-zinc-400 mb-1">POSTER ARTWORK URL</label>
-                  <input
-                    type="url"
-                    placeholder="Provide image link"
-                    value={posterUrl}
-                    onChange={(e) => {
-                      setPosterUrl(e.target.value);
-                      setSelectedMovie(null);
-                    }}
-                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
-                  />
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Poster Block */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-mono text-zinc-400">POSTER ARTWORK (IMAGE FILE OR URL) *</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        placeholder="Provide image link"
+                        value={posterUrl}
+                        onChange={(e) => {
+                          setPosterUrl(e.target.value);
+                          setSelectedMovie(null);
+                        }}
+                        className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
+                      />
+                      <label className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs font-mono font-bold text-zinc-200 cursor-pointer transition-all shrink-0">
+                        <Upload className="h-3.5 w-3.5 text-amber-500" />
+                        <span>UPLOAD FILE</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handlePosterFileUpload(file);
+                          }}
+                        />
+                      </label>
+                    </div>
+                    {posterFileError && (
+                      <p className="text-[10px] text-red-400 font-mono">{posterFileError}</p>
+                    )}
+                    {posterUrl && (
+                      <div className="flex items-center gap-2 bg-zinc-950/40 p-1.5 rounded border border-zinc-900 leading-normal">
+                        <img 
+                          src={posterUrl} 
+                          alt="Poster Preview" 
+                          className="w-8 h-12 object-cover rounded border border-zinc-800 bg-zinc-900 shrink-0"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            e.currentTarget.src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=100';
+                          }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[9px] text-zinc-500 truncate font-mono">
+                            {posterUrl.startsWith('data:') ? '🔌 CUSTOM UPLOADED IMAGE (BASE64)' : posterUrl}
+                          </p>
+                        </div>
+                        {posterUrl.startsWith('data:') && (
+                          <button
+                            type="button"
+                            onClick={() => setPosterUrl('')}
+                            className="text-[9px] text-red-400 hover:text-red-300 font-mono px-1.5 py-0.5 bg-red-500/10 hover:bg-red-500/20 rounded cursor-pointer transition-all shrink-0"
+                          >
+                            RESET
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Backdrop Block */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-mono text-zinc-400">BACKDROP BANNER (IMAGE FILE OR URL)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        placeholder="Provide backdrop banner link"
+                        value={backdropUrl}
+                        onChange={(e) => {
+                          setBackdropUrl(e.target.value);
+                          setSelectedMovie(null);
+                        }}
+                        className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
+                      />
+                      <label className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs font-mono font-bold text-zinc-200 cursor-pointer transition-all shrink-0">
+                        <Upload className="h-3.5 w-3.5 text-amber-500" />
+                        <span>UPLOAD FILE</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleBackdropFileUpload(file);
+                          }}
+                        />
+                      </label>
+                    </div>
+                    {backdropFileError && (
+                      <p className="text-[10px] text-red-400 font-mono">{backdropFileError}</p>
+                    )}
+                    {backdropUrl && (
+                      <div className="flex items-center gap-2 bg-zinc-950/40 p-1.5 rounded border border-zinc-900 leading-normal">
+                        <img 
+                          src={backdropUrl} 
+                          alt="Backdrop Preview" 
+                          className="w-16 h-10 object-cover rounded border border-zinc-800 bg-zinc-900 shrink-0"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            e.currentTarget.src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=150';
+                          }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[9px] text-zinc-500 truncate font-mono">
+                            {backdropUrl.startsWith('data:') ? '🔌 CUSTOM BACKDROP IMAGE (BASE64)' : backdropUrl}
+                          </p>
+                        </div>
+                        {backdropUrl.startsWith('data:') && (
+                          <button
+                            type="button"
+                            onClick={() => setBackdropUrl('')}
+                            className="text-[9px] text-red-400 hover:text-red-300 font-mono px-1.5 py-0.5 bg-red-500/10 hover:bg-red-500/20 rounded cursor-pointer transition-all shrink-0"
+                          >
+                            RESET
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>
