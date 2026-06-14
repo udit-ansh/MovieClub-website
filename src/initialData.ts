@@ -25,7 +25,7 @@ export const initialScreenings: Screening[] = [
     year: 2018,
     date: '2026-06-26',
     time: '19:00',
-    venue: 'LHC G-06 Seminar Hall',
+    venue: 'M.N. Saha Auditorium, Ground Floor, TRC building',
     description: 'A mythological story about a goddess who created the entire universe and her first-born son, Hastar, a monster who wants to consume all the gold and grain. A family built a shrine for Hastar, which brings about a terrible curse.',
     posterUrl: 'https://images.unsplash.com/photo-1509248961158-e54f6934749c?q=80&w=600&auto=format&fit=crop', // dark textured shadow
     backdropUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1200&auto=format&fit=crop',

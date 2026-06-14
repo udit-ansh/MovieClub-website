@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { 
   Calendar, Clock, MapPin, Film, Plus, Edit2, Trash2, Globe, Eye,
-  Clock3, Star, Sparkles, ExternalLink, Bell, Check, X, Tag
+  Clock3, Star, Sparkles, ExternalLink, Bell, Check, X, Tag, Link2
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Screening } from '../types';
+import { letterboxdMovies, LetterboxdMovie, findMovieByUrlOrSlug, parseLetterboxdUrlToMovie } from '../letterboxdDb';
 
 interface ScreeningScheduleProps {
   screenings: Screening[];
@@ -31,7 +33,7 @@ export default function ScreeningSchedule({
   const [year, setYear] = useState<number>(2024);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
-  const [venue, setVenue] = useState('LHC G-06 Seminar Hall');
+  const [venue, setVenue] = useState('M.N. Saha Auditorium, Ground Floor, TRC building');
   const [description, setDescription] = useState('');
   const [posterUrl, setPosterUrl] = useState('');
   const [backdropUrl, setBackdropUrl] = useState('');
@@ -41,8 +43,113 @@ export default function ScreeningSchedule({
   const [trailerUrl, setTrailerUrl] = useState('');
   const [feedbackMsg, setFeedbackMsg] = useState('');
 
+  // Letterboxd integration states
+  const [letterboxdInput, setLetterboxdInput] = useState('');
+  const [lbSuggestions, setLbSuggestions] = useState<LetterboxdMovie[]>([]);
+  const [selectedMovie, setSelectedMovie] = useState<LetterboxdMovie | null>(null);
+
   // Local reminders simulation status
   const [reminders, setReminders] = useState<Record<string, boolean>>({});
+
+  // AI autofill state
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+
+  const fetchAiMovieDetails = async () => {
+    const query = title.trim();
+    if (!query) {
+      setAiError('Please enter a film title first to fetch details.');
+      return;
+    }
+    setIsAiLoading(true);
+    setAiError('');
+    try {
+      const res = await fetch('/api/movie-details', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ movieQuery: query }),
+      });
+      if (!res.ok) {
+        throw new Error('Could not fetch metadata. Please try again.');
+      }
+      const data = await res.json();
+      if (data.title) setTitle(data.title);
+      if (data.director) setDirector(data.director);
+      if (data.year) setYear(Number(data.year));
+      if (data.duration) setRuntime(data.duration);
+      if (data.genre) setGenreInput(data.genre);
+      if (data.description) setDescription(data.description);
+      if (data.posterUrl) setPosterUrl(data.posterUrl);
+      if (data.backdropUrl) setBackdropUrl(data.backdropUrl);
+      
+      setFeedbackMsg(`✨ AI successfully populated details for "${data.title}"!`);
+      setTimeout(() => setFeedbackMsg(''), 4500);
+    } catch (err: any) {
+      console.error(err);
+      setAiError(err.message || 'Error occurred during AI fetching.');
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleLetterboxdInputChange = (val: string) => {
+    setLetterboxdInput(val);
+    
+    // Check if it's a Letterboxd URL
+    if (val.toLowerCase().includes('letterboxd.com/film/')) {
+      const parsed = parseLetterboxdUrlToMovie(val);
+      setTitle(parsed.title);
+      setYear(parsed.year);
+      
+      const localMatch = findMovieByUrlOrSlug(val);
+      if (localMatch) {
+        setDirector(localMatch.director);
+        setRuntime(localMatch.runtime);
+        setLanguage(localMatch.language);
+        setGenreInput(localMatch.genre.join(', '));
+        setPosterUrl(localMatch.posterUrl);
+        setBackdropUrl(localMatch.backdropUrl);
+        setDescription(localMatch.synopsis);
+        setSelectedMovie(localMatch);
+      } else {
+        setDirector('');
+        setGenreInput('Drama');
+        setSelectedMovie(null);
+      }
+      setLbSuggestions([]);
+      return;
+    }
+
+    // Otherwise standard search
+    if (val.trim().length >= 2) {
+      const query = val.toLowerCase().trim();
+      const filtered = letterboxdMovies.filter(m => 
+        m.title.toLowerCase().includes(query) || 
+        m.director.toLowerCase().includes(query) ||
+        m.genre.some(g => g.toLowerCase().includes(query))
+      );
+      setLbSuggestions(filtered);
+    } else {
+      setLbSuggestions([]);
+    }
+  };
+
+  const selectLetterboxdMovie = (movie: LetterboxdMovie) => {
+    setTitle(movie.title);
+    setDirector(movie.director);
+    setYear(movie.year);
+    setRuntime(movie.runtime);
+    setLanguage(movie.language);
+    setGenreInput(movie.genre.join(', '));
+    setPosterUrl(movie.posterUrl);
+    setBackdropUrl(movie.backdropUrl);
+    setDescription(movie.synopsis);
+    setLetterboxdInput(movie.letterboxdUrl);
+    setSelectedMovie(movie);
+    setLbSuggestions([]);
+  };
 
   const openAddForm = () => {
     setEditingScreening(null);
@@ -51,14 +158,17 @@ export default function ScreeningSchedule({
     setYear(2024);
     setDate('');
     setTime('18:30');
-    setVenue('LHC G-06 Seminar Hall');
+    setVenue('M.N. Saha Auditorium, Ground Floor, TRC building');
     setDescription('');
-    setPosterUrl('https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=600&auto=format&fit=crop'); // Cinema screen Unsplash
+    setPosterUrl('https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=600&auto=format&fit=crop');
     setBackdropUrl('https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=1200&auto=format&fit=crop');
     setRuntime('120 min');
     setGenreInput('Drama, Sci-Fi');
     setLanguage('English (with English subtitles)');
     setTrailerUrl('');
+    setLetterboxdInput('');
+    setSelectedMovie(null);
+    setLbSuggestions([]);
     setShowFormModal(true);
   };
 
@@ -77,6 +187,9 @@ export default function ScreeningSchedule({
     setGenreInput(screening.genre.join(', '));
     setLanguage(screening.language);
     setTrailerUrl(screening.trailerUrl || '');
+    setLetterboxdInput('');
+    setSelectedMovie(null);
+    setLbSuggestions([]);
     setShowFormModal(true);
   };
 
@@ -84,7 +197,6 @@ export default function ScreeningSchedule({
     e.preventDefault();
     const parsedGenres = genreInput.split(',').map(g => g.trim()).filter(g => g.length > 0);
     
-    // Quick validation
     if (!title || !director || !date || !time) {
       alert('Please fill out all required fields: Title, Director, Date, and Time.');
       return;
@@ -132,11 +244,9 @@ export default function ScreeningSchedule({
     }
   };
 
-  // Helper to format screening time/countdown
   const getCountdownText = (dateStr: string) => {
     const screeningDate = new Date(dateStr);
     const today = new Date();
-    // Zero out times for date-only comparison
     screeningDate.setHours(0,0,0,0);
     today.setHours(0,0,0,0);
 
@@ -149,7 +259,6 @@ export default function ScreeningSchedule({
     return `In ${diffDays} days`;
   };
 
-  // Helper for prettier dates
   const formatPrettyDate = (dateStr: string) => {
     const options: any = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
     return new Date(dateStr).toLocaleDateString('en-US', options);
@@ -157,7 +266,6 @@ export default function ScreeningSchedule({
 
   return (
     <div className="space-y-12">
-      {/* Dynamic Floating Feedback Alerts */}
       {feedbackMsg && (
         <div className="fixed bottom-6 right-6 z-50 bg-amber-500 text-zinc-950 px-5 py-4 rounded-xl shadow-xl border border-amber-400 font-medium flex items-center space-x-3 text-sm max-w-sm animate-bounce">
           <Sparkles className="h-5 w-5 shrink-0" />
@@ -212,16 +320,14 @@ export default function ScreeningSchedule({
 
       {/* Upcoming Screenings list */}
       <div className="grid grid-cols-1 gap-10">
-        {screenings.map((screening, index) => {
+        {screenings.map((screening) => {
           const countdown = getCountdownText(screening.date);
-          const isToday = countdown.includes('Today');
 
           return (
             <div 
               key={screening.id}
               className="group relative flex flex-col lg:flex-row rounded-3xl border border-zinc-900/60 bg-zinc-950 overflow-hidden shadow-2xl transition-all duration-300 hover:border-zinc-800/80 hover:shadow-amber-500/[0.02]"
             >
-              {/* Corner Accent for Admin */}
               {adminMode && (
                 <div className="absolute top-4 right-4 z-20 flex items-center space-x-1.5 bg-zinc-900/90 border border-zinc-800 p-1.5 rounded-xl">
                   <button
@@ -245,7 +351,7 @@ export default function ScreeningSchedule({
                 </div>
               )}
 
-              {/* Backdrop Art Section (Left Side Image in desktop, Top in mobile) */}
+              {/* Backdrop Art Section */}
               <div className="relative w-full lg:w-[35%] h-64 lg:h-auto min-h-[300px] overflow-hidden">
                 <img 
                   src={screening.posterUrl} 
@@ -255,7 +361,6 @@ export default function ScreeningSchedule({
                 />
                 <div className="absolute inset-0 bg-gradient-to-t lg:bg-gradient-to-r from-zinc-950 via-zinc-950/40 to-transparent"></div>
 
-                {/* Date overlay left corner */}
                 <div className="absolute bottom-4 left-4 flex flex-col space-y-1 bg-zinc-950/80 backdrop-blur-md px-3.5 py-2.5 rounded-xl border border-zinc-800/80">
                   <span className="font-mono text-amber-500 font-bold text-xs uppercase tracking-wider">
                     {countdown}
@@ -291,7 +396,6 @@ export default function ScreeningSchedule({
                     {screening.description}
                   </p>
 
-                  {/* Metadata Row for logistics */}
                   <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-4 border-t border-b border-zinc-900/80 py-4 font-mono text-xs">
                     <div className="space-y-1">
                       <span className="text-zinc-500 block uppercase text-[10px]">Screening Date</span>
@@ -319,7 +423,6 @@ export default function ScreeningSchedule({
                   </div>
                 </div>
 
-                {/* Footer row action triggers */}
                 <div className="mt-6 pt-2 flex flex-wrap items-center justify-between gap-4">
                   <div className="flex items-center space-x-2 text-xs font-mono text-zinc-500">
                     <Globe className="h-3.5 w-3.5 text-zinc-600" />
@@ -377,7 +480,7 @@ export default function ScreeningSchedule({
           <div>
             <h4 className="text-sm font-semibold text-zinc-200">Have a venue preference?</h4>
             <p className="text-xs text-zinc-500 mt-0.5">
-              Normally screenings occur at LHC G-06 or MND Auditorium. Check specific events for gate details.
+              Normally screenings occur at M.N. Saha Auditorium (TRC Building), or MND Auditorium. Check specific events for gate details.
             </p>
           </div>
         </div>
@@ -407,17 +510,100 @@ export default function ScreeningSchedule({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4 text-sm text-zinc-300">
+              
+              {/* Intelligent Letterboxd autofill search bar (Only for new schedules to avoid overwriting existing data unexpectedly) */}
+              {!editingScreening && (
+                <div className="bg-zinc-900/80 border border-zinc-800 p-4 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <span className="text-amber-500 flex items-center gap-1 px-1.5 py-0.5 bg-amber-500/5 rounded border border-amber-500/10 font-bold uppercase tracking-wider text-[10px]">
+                      🎥 LETTERBOXD SCHEDULER AUTOFILL
+                    </span>
+                    <span className="text-zinc-500 text-[10px]/none">Quick Selection</span>
+                  </div>
+                  
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-zinc-500">
+                      <Link2 className="h-3.5 w-3.5" />
+                    </span>
+                    <input
+                      type="text"
+                      value={letterboxdInput}
+                      onChange={(e) => handleLetterboxdInputChange(e.target.value)}
+                      placeholder="Type film name (e.g. Parasite) or paste official Letterboxd link"
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 pl-9 pr-3 text-xs text-zinc-100 placeholder-zinc-500 focus:border-amber-500/50 focus:outline-none"
+                    />
+
+                    {lbSuggestions.length > 0 && (
+                      <div className="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl divide-y divide-zinc-900">
+                        {lbSuggestions.map(movie => (
+                          <button
+                            key={movie.id}
+                            type="button"
+                            onClick={() => selectLetterboxdMovie(movie)}
+                            className="w-full px-3 py-2.5 text-left text-xs hover:bg-zinc-900 flex items-center gap-3 transition-colors cursor-pointer"
+                          >
+                            <img 
+                              src={movie.posterUrl} 
+                              className="w-7 h-10 object-cover rounded shrink-0 bg-zinc-800 border border-zinc-800/50" 
+                              referrerPolicy="no-referrer" 
+                            />
+                            <div>
+                              <div className="font-bold text-zinc-200">{movie.title} <span className="text-zinc-550 font-normal">({movie.year})</span></div>
+                              <div className="text-[10px] text-zinc-500 font-mono mt-0.5">Dir: {movie.director} • {movie.genre.slice(0, 2).join(', ')}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedMovie && (
+                    <div className="flex items-start gap-3 bg-zinc-950/65 p-2.5 rounded-lg border border-zinc-800">
+                      <img 
+                        src={selectedMovie.posterUrl} 
+                        className="w-10 h-14 object-cover rounded border border-zinc-800 shrink-0" 
+                        referrerPolicy="no-referrer" 
+                      />
+                      <div className="text-xs space-y-0.5">
+                        <div className="font-bold text-amber-500 font-mono text-[10px] uppercase">Ready to Schedule</div>
+                        <div className="font-serif font-bold text-zinc-100 leading-tight">{selectedMovie.title} ({selectedMovie.year})</div>
+                        <div className="text-[11px] text-zinc-400">Director: {selectedMovie.director} • {selectedMovie.runtime}</div>
+                        <div className="text-[10px] text-zinc-500 font-mono">{selectedMovie.language} • {selectedMovie.genre.join(', ')}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-mono text-zinc-400 mb-1">MOVIE TITLE *</label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-mono text-zinc-400">MOVIE TITLE *</label>
+                    <button
+                      type="button"
+                      onClick={fetchAiMovieDetails}
+                      disabled={isAiLoading || !title.trim()}
+                      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded cursor-pointer transition-all border ${
+                        title.trim() 
+                          ? 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-500' 
+                          : 'bg-zinc-900 border-zinc-800 text-zinc-500 cursor-not-allowed'
+                      }`}
+                    >
+                      {isAiLoading ? '⌛ FETCHING...' : '✨ AUTOFILL VIA AI'}
+                    </button>
+                  </div>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Inception"
                     value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none"
+                    onChange={(e) => {
+                      setTitle(e.target.value);
+                      setSelectedMovie(null);
+                    }}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
                   />
+                  {aiError && <p className="text-[10px] text-red-400 mt-1">{aiError}</p>}
                 </div>
 
                 <div>
@@ -427,8 +613,11 @@ export default function ScreeningSchedule({
                     required
                     placeholder="e.g. Christopher Nolan"
                     value={director}
-                    onChange={(e) => setDirector(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none"
+                    onChange={(e) => {
+                      setDirector(e.target.value);
+                      setSelectedMovie(null);
+                    }}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
                   />
                 </div>
               </div>
@@ -439,7 +628,10 @@ export default function ScreeningSchedule({
                   <input
                     type="number"
                     value={year}
-                    onChange={(e) => setYear(Number(e.target.value))}
+                    onChange={(e) => {
+                      setYear(Number(e.target.value));
+                      setSelectedMovie(null);
+                    }}
                     className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 focus:border-amber-500/50 focus:outline-none"
                   />
                 </div>
@@ -449,7 +641,10 @@ export default function ScreeningSchedule({
                   <input
                     type="text"
                     value={runtime}
-                    onChange={(e) => setRuntime(e.target.value)}
+                    onChange={(e) => {
+                      setRuntime(e.target.value);
+                      setSelectedMovie(null);
+                    }}
                     placeholder="e.g. 148 min"
                     className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none"
                   />
@@ -460,7 +655,10 @@ export default function ScreeningSchedule({
                   <input
                     type="text"
                     value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
+                    onChange={(e) => {
+                      setLanguage(e.target.value);
+                      setSelectedMovie(null);
+                    }}
                     placeholder="e.g. English"
                     className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none"
                   />
@@ -495,7 +693,7 @@ export default function ScreeningSchedule({
                   <label className="block text-xs font-mono text-zinc-400 mb-1">IISER VENUE</label>
                   <input
                     type="text"
-                    placeholder="e.g. LHC G-06"
+                    placeholder="e.g. M.N. Saha Auditorium"
                     value={venue}
                     onChange={(e) => setVenue(e.target.value)}
                     className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 focus:border-amber-500/50 focus:outline-none"
@@ -509,7 +707,10 @@ export default function ScreeningSchedule({
                   type="text"
                   placeholder="e.g. Sci-Fi, Thriller, Action"
                   value={genreInput}
-                  onChange={(e) => setGenreInput(e.target.value)}
+                  onChange={(e) => {
+                    setGenreInput(e.target.value);
+                    setSelectedMovie(null);
+                  }}
                   className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
                 />
               </div>
@@ -521,8 +722,11 @@ export default function ScreeningSchedule({
                     type="url"
                     placeholder="Provide image link"
                     value={posterUrl}
-                    onChange={(e) => setPosterUrl(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none"
+                    onChange={(e) => {
+                      setPosterUrl(e.target.value);
+                      setSelectedMovie(null);
+                    }}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
                   />
                 </div>
 
@@ -533,7 +737,7 @@ export default function ScreeningSchedule({
                     placeholder="Provide trailer link"
                     value={trailerUrl}
                     onChange={(e) => setTrailerUrl(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none"
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
                   />
                 </div>
               </div>
@@ -544,7 +748,10 @@ export default function ScreeningSchedule({
                   rows={3}
                   placeholder="Provide a compelling preview review or description describing why this film is selected..."
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    setSelectedMovie(null);
+                  }}
                   className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none resize-none"
                 />
               </div>

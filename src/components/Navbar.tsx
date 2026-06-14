@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Film, User as UserIcon, LogOut, Shield, ShieldCheck, HelpCircle, GraduationCap } from 'lucide-react';
 import { User } from '../types';
+import { auth, googleProvider } from '../firebase';
+import { signInWithPopup, signOut as fbSignOut } from 'firebase/auth';
 
 interface NavbarProps {
   currentUser: User | null;
@@ -27,6 +29,7 @@ export default function Navbar({
   const [passwordInput, setPasswordInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [showAdminVerify, setShowAdminVerify] = useState(false);
+  const [isGoogleCustom, setIsGoogleCustom] = useState(false);
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,13 +40,11 @@ export default function Navbar({
 
     const trimmedEmail = emailInput.trim().toLowerCase();
     // Validate institute email format
-    // Accept standard user email or @iiserkol.ac.in
     const extMatch = trimmedEmail.endsWith('@iiserkol.ac.in');
     
-    // For demonstration and easy testing, we also accept uditansh2007@gmail.com (user email in metadata) or basic custom entry
-    // but we enforce the rule with a helper warning
+    // For experimental and standard development support, we also allow uditansh2007@gmail.com
     if (!extMatch && trimmedEmail !== 'uditansh2007@gmail.com') {
-      setErrorMsg('Please use your official IISER K email ID (@iiserkol.ac.in)');
+      setErrorMsg('This Google app is restricted to IISER Kolkata accounts (@iiserkol.ac.in). Please log in using your student email.');
       return;
     }
 
@@ -69,6 +70,78 @@ export default function Navbar({
     setNameInput('');
     setPasswordInput('');
     setErrorMsg('');
+    setIsGoogleCustom(false);
+  };
+
+  const handleRealGoogleSignIn = async () => {
+    try {
+      setErrorMsg('');
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      const email = user.email ? user.email.toLowerCase() : '';
+      const name = user.displayName || 'IISER-K Member';
+      
+      // Enforce the rule that students can only Google login with their institute iiserkol.ac.in email
+      const extMatch = email.endsWith('@iiserkol.ac.in');
+      const isDevUser = email === 'uditansh2007@gmail.com';
+      
+      if (!extMatch && !isDevUser) {
+        await fbSignOut(auth);
+        setErrorMsg('This Google app is restricted to IISER Kolkata accounts (@iiserkol.ac.in). Please log in using your student email.');
+        return;
+      }
+      
+      let role: 'admin' | 'student' = 'student';
+      if (email === 'movie.activity@iiserkol.ac.in' || email.startsWith('admin.')) {
+        role = 'admin';
+      }
+      
+      onLogin(email, name, role);
+      setShowLoginModal(false);
+      setEmailInput('');
+      setNameInput('');
+      setPasswordInput('');
+      setErrorMsg('');
+      setIsGoogleCustom(false);
+    } catch (err: any) {
+      console.error('Google Sign-In Error:', err);
+      setErrorMsg(err.message || 'An error occurred during Google Sign-In.');
+    }
+  };
+
+  const handleAdminGoogleSignIn = async () => {
+    try {
+      setErrorMsg('');
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      const email = user.email ? user.email.toLowerCase() : '';
+      const name = user.displayName || 'Club Coordinator';
+      
+      if (email !== 'movie.activity@iiserkol.ac.in') {
+        await fbSignOut(auth);
+        setErrorMsg('Administrative access denied. Only movie.activity@iiserkol.ac.in is authorized for Google coordinate access.');
+        return;
+      }
+      
+      setAdminMode(true);
+      onLogin(email, name, 'admin');
+      setShowAdminVerify(false);
+      setPasswordInput('');
+      setErrorMsg('');
+    } catch (err: any) {
+      console.error('Google Admin Sign-In Error:', err);
+      setErrorMsg(err.message || 'An error occurred during Google Admin Sign-In.');
+    }
+  };
+
+  const handleGoogleAccountClick = (email: string, name: string) => {
+    onLogin(email, name, 'student');
+    setShowLoginModal(false);
+    setEmailInput('');
+    setNameInput('');
+    setPasswordInput('');
+    setErrorMsg('');
+    setIsGoogleCustom(false);
   };
 
   const handleAdminAuthSubmit = (e: React.FormEvent) => {
@@ -88,7 +161,12 @@ export default function Navbar({
     }
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    try {
+      await fbSignOut(auth);
+    } catch (err) {
+      console.error('Firebase signOut error:', err);
+    }
     onLogout();
     setAdminMode(false);
   };
@@ -242,91 +320,234 @@ export default function Navbar({
 
       {/* Login Modal */}
       {showLoginModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-fade-in">
           <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl relative">
-            <div className="flex flex-col items-center text-center mb-6">
-              <div className="h-12 w-12 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center ring-1 ring-amber-500/20 mb-3">
-                <GraduationCap className="h-6 w-6" />
-              </div>
-              <h2 className="font-serif text-xl font-bold text-zinc-100">IISER Kolkata Email Authentication</h2>
-              <p className="text-xs text-zinc-400 max-w-xs mt-1">
-                Access schedule actions and submit/vote on recommendations using your campus email ID.
-              </p>
-            </div>
+            
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setShowLoginModal(false);
+                setIsGoogleCustom(false);
+                setErrorMsg('');
+              }}
+              className="absolute top-4 right-4 p-2 text-zinc-500 hover:text-zinc-200 rounded-lg cursor-pointer transition-colors"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
 
-            <form onSubmit={handleLoginSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-mono text-zinc-400 mb-1.5 uppercase tracking-wider">
-                  IISER-K Student Email ID
-                </label>
-                <input
-                  type="email"
-                  required
-                  placeholder="e.g. user21@iiserkol.ac.in"
-                  value={emailInput}
-                  onChange={(e) => {
-                    setEmailInput(e.target.value);
-                    if (errorMsg) setErrorMsg('');
-                  }}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-amber-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
-                />
-                <span className="text-[10px] text-zinc-500 block mt-1 font-mono italic">
-                  Must end with @iiserkol.ac.in (or use uditansh2007@gmail.com)
-                </span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono text-zinc-400 mb-1.5 uppercase tracking-wider">
-                  Full Name (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Ritoban Roy"
-                  value={nameInput}
-                  onChange={(e) => setNameInput(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-amber-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
-                />
-              </div>
-
-              <div className="border-t border-zinc-900 pt-4">
-                <div className="flex items-center space-x-2 text-xs text-zinc-500 mb-2">
-                  <HelpCircle className="h-3.5 w-3.5" />
-                  <span>Logging in as club administrator?</span>
+            {!isGoogleCustom ? (
+              <div className="flex flex-col">
+                {/* Google Sign-in accounts screen */}
+                <div className="flex flex-col items-center text-center mb-6">
+                  <div className="flex items-center justify-center mb-3 mt-1">
+                    <svg className="h-6 w-6 mr-1.5" viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12V14.4h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.23z" fill="#4285F4"/>
+                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.87-2.6-2.87-4.53-6.16-4.53z" fill="#FBBC05"/>
+                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                    <span className="text-zinc-200 font-sans font-medium text-lg tracking-tight">Google</span>
+                  </div>
+                  <h2 className="text-xl font-medium text-zinc-100 font-sans">Sign in with Google</h2>
+                  <p className="text-xs text-zinc-400 mt-1.5">
+                    to continue to <span className="text-amber-400 font-semibold">MovieClub IISER Kolkata</span>
+                  </p>
                 </div>
-                <input
-                  type="password"
-                  placeholder="Enter administrative passcode (optional)"
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-amber-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
-                />
-                <span className="text-[10px] text-zinc-500 block mt-1 font-mono italic">
-                  To log in as admin, use experimental passcode: <code className="text-amber-500 bg-amber-500/5 px-1 rounded block sm:inline">admin123</code>
-                </span>
-              </div>
 
-              {errorMsg && (
-                <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400">
-                  {errorMsg}
-                </div>
-              )}
-
-              <div className="flex justify-end space-x-3 pt-2">
+                {/* Real Google Sign-In Action Button */}
                 <button
                   type="button"
-                  onClick={() => setShowLoginModal(false)}
-                  className="px-4 py-2 text-sm font-semibold text-zinc-400 hover:text-zinc-200"
+                  onClick={handleRealGoogleSignIn}
+                  className="w-full mb-4 flex items-center justify-center space-x-3 p-3.5 rounded-xl border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900/90 hover:border-amber-500/50 transition-all text-center cursor-pointer shadow-lg group font-medium"
                 >
-                  Cancel
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12V14.4h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.23z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.87-2.6-2.87-4.53-6.16-4.53z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                  <span className="text-sm font-semibold text-zinc-200 group-hover:text-amber-400 transition-colors">
+                    Sign in with Google (Real Auth)
+                  </span>
                 </button>
-                <button
-                  type="submit"
-                  className="bg-amber-500 hover:bg-amber-600 text-zinc-950 px-5 py-2 rounded-lg text-sm font-semibold transition-colors"
-                >
-                  Verify Email
-                </button>
+
+                {errorMsg && (
+                  <div className="mb-4 rounded-lg bg-red-500/10 border border-red-500/25 p-3.5 text-xs text-red-400 leading-relaxed">
+                    <div className="font-bold flex items-center gap-1 mb-0.5 text-red-500 font-mono text-[10px]">
+                      ⚠️ AUTH_ERROR
+                    </div>
+                    {errorMsg}
+                  </div>
+                )}
+
+                <div className="relative my-4 flex items-center justify-center">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-zinc-900"></div>
+                  </div>
+                  <span className="relative bg-zinc-950 px-3 text-[10px] font-mono text-zinc-600 uppercase tracking-widest bg-zinc-950 select-none">
+                    OR USE SANDBOX SIMULATOR
+                  </span>
+                </div>
+
+                <div className="space-y-2.5 mb-6">
+                  <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest pl-1">
+                    Select active campus account
+                  </p>
+
+                  {/* Simulated student accounts */}
+                  <button
+                    onClick={() => handleGoogleAccountClick('udent.21@iiserkol.ac.in', 'Udit Kumar')}
+                    className="w-full flex items-center justify-between p-3.5 rounded-xl border border-zinc-900 bg-zinc-900/30 hover:bg-zinc-900/85 hover:border-amber-500/30 transition-all text-left group cursor-pointer"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="h-8 w-8 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center justify-center font-bold text-xs select-none">
+                        U
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-zinc-200 group-hover:text-amber-400 transition-colors">Udit Kumar</p>
+                        <p className="text-[10.5px] text-zinc-500 font-mono">udent.21@iiserkol.ac.in</p>
+                      </div>
+                    </div>
+                    <span className="text-[9px] text-zinc-500 font-mono border border-zinc-850 px-1.5 py-0.5 rounded uppercase">STUDENT</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleGoogleAccountClick('arindam.phys@iiserkol.ac.in', 'Arindam Ghosh')}
+                    className="w-full flex items-center justify-between p-3.5 rounded-xl border border-zinc-900 bg-zinc-900/30 hover:bg-zinc-900/85 hover:border-amber-500/30 transition-all text-left group cursor-pointer"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="h-8 w-8 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center justify-center font-bold text-xs select-none">
+                        A
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-zinc-200 group-hover:text-amber-400 transition-colors">Arindam Ghosh</p>
+                        <p className="text-[10.5px] text-zinc-500 font-mono">arindam.phys@iiserkol.ac.in</p>
+                      </div>
+                    </div>
+                    <span className="text-[9px] text-zinc-500 font-mono border border-zinc-850 px-1.5 py-0.5 rounded uppercase">PATRON</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsGoogleCustom(true);
+                      setErrorMsg('');
+                    }}
+                    className="w-full flex items-center justify-start p-3.5 rounded-xl border border-zinc-900 bg-zinc-950 hover:bg-zinc-900/30 border-dashed hover:border-zinc-800 transition-all text-left cursor-pointer group"
+                  >
+                    <div className="h-8 w-8 rounded-full bg-zinc-900 text-zinc-400 border border-zinc-800/60 flex items-center justify-center text-xs mr-3">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </div>
+                    <span className="text-xs font-semibold text-zinc-400 group-hover:text-zinc-200">Use another Google Account</span>
+                  </button>
+                </div>
+
+                <div className="border-t border-zinc-900 pt-4 flex items-center justify-between text-xs text-zinc-500">
+                  <span className="font-mono text-[9px] uppercase tracking-wider text-zinc-600">iiserkol.ac.in SSO auth</span>
+                  <button
+                    onClick={() => {
+                      setShowLoginModal(false);
+                      setShowAdminVerify(true);
+                    }}
+                    className="text-amber-500/80 hover:text-amber-400 font-mono text-[10.5px] hover:underline"
+                  >
+                    Coordinator Console
+                  </button>
+                </div>
               </div>
-            </form>
+            ) : (
+              <div className="flex flex-col">
+                {/* Manual Email Input Form */}
+                <div className="flex flex-col items-center text-center mb-6">
+                  <div className="flex items-center justify-center mb-3 mt-1">
+                    <svg className="h-6 w-6 mr-1.5" viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12V14.4h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.23z" fill="#4285F4"/>
+                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.87-2.6-2.87-4.53-6.16-4.53z" fill="#FBBC05"/>
+                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                    <span className="text-zinc-200 font-sans font-medium text-lg tracking-tight">Google</span>
+                  </div>
+                  <h2 className="text-xl font-medium text-zinc-100 font-sans">Account Workspace Sign-In</h2>
+                  <p className="text-xs text-zinc-400 mt-1.5">
+                    Connect using your official IISER Kolkata email ID
+                  </p>
+                </div>
+
+                <form onSubmit={handleLoginSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-mono text-zinc-400 mb-1.5 uppercase tracking-wider">
+                      IISER-K Student Email ID
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      autoFocus
+                      placeholder="e.g. username.dept21@iiserkol.ac.in"
+                      value={emailInput}
+                      onChange={(e) => {
+                        setEmailInput(e.target.value);
+                        if (errorMsg) setErrorMsg('');
+                      }}
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-amber-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+                    />
+                    <span className="text-[10px] text-zinc-550 block mt-1.5 font-mono italic leading-relaxed">
+                      Must end with @iiserkol.ac.in (or use uditansh2007@gmail.com for developer testing).
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-mono text-zinc-400 mb-1.5 uppercase tracking-wider">
+                      Full Name (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Ritoban Roy"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-amber-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+                    />
+                  </div>
+
+                  {errorMsg && (
+                    <div className="rounded-lg bg-red-500/10 border border-red-500/25 p-3.5 text-xs text-red-400 leading-relaxed">
+                      <div className="font-bold flex items-center gap-1 mb-0.5 text-red-500 font-mono text-[10px]">
+                        ⚠️ SSO_DOMAIN_NOT_ALLOWED
+                      </div>
+                      {errorMsg}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-3 border-t border-zinc-900/70">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsGoogleCustom(false);
+                        setEmailInput('');
+                        setNameInput('');
+                        setErrorMsg('');
+                      }}
+                      className="text-xs font-semibold text-zinc-400 hover:text-zinc-250 flex items-center space-x-1"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      <span>Choose Account</span>
+                    </button>
+                    
+                    <button
+                      type="submit"
+                      className="bg-amber-500 hover:bg-amber-600 text-zinc-950 px-5 py-2 rounded-lg text-xs font-bold font-mono transition-colors"
+                    >
+                      SIGN IN
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -338,9 +559,35 @@ export default function Navbar({
             <div className="flex flex-col items-center text-center mb-5">
               <Shield className="h-10 w-10 text-amber-500 mb-2 animate-pulse" />
               <h2 className="font-serif text-lg font-bold text-zinc-100">Unlock Administrative Console</h2>
-              <p className="text-xs text-zinc-400 mt-1">
+              <p className="text-xs text-zinc-400 mt-1 pb-2">
                 Authorized IISER Kolkata Movie Club coordinators only.
               </p>
+            </div>
+
+            {/* Real Google Sign-In Action Button for Coordinator */}
+            <button
+              type="button"
+              onClick={handleAdminGoogleSignIn}
+              className="w-full mb-4 flex items-center justify-center space-x-3 p-3.5 rounded-xl border border-zinc-800 bg-zinc-900/40 hover:bg-zinc-900/90 hover:border-amber-500/50 transition-all text-center cursor-pointer shadow-lg group font-medium"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12V14.4h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.23z" fill="#4285F4"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.87-2.6-2.87-4.53-6.16-4.53z" fill="#FBBC05"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+              </svg>
+              <span className="text-sm font-semibold text-zinc-200 group-hover:text-amber-400 transition-colors">
+                Sign in with Google (Admin)
+              </span>
+            </button>
+
+            <div className="relative my-4 flex items-center justify-center">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-zinc-900"></div>
+              </div>
+              <span className="relative bg-zinc-950 px-3 text-[10px] font-mono text-zinc-500 uppercase tracking-widest select-none">
+                OR USE EXPERIMENTAL CODES
+              </span>
             </div>
 
             <form onSubmit={handleAdminAuthSubmit} className="space-y-4">
@@ -366,7 +613,7 @@ export default function Navbar({
               </div>
 
               {errorMsg && (
-                <div className="rounded-lg bg-red-500/10 border border-red-500/25 p-3 text-xs text-red-400 text-center">
+                <div className="rounded-lg bg-red-500/10 border border-red-500/25 p-3 text-xs text-red-400 text-center leading-relaxed">
                   {errorMsg}
                 </div>
               )}

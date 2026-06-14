@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { 
   Plus, MessageSquareHeart, Search, ArrowUp, ThumbsUp, Calendar, 
-  Filter, Sparkles, User, HelpCircle, Film, BookOpen, AlertCircle
+  Filter, Sparkles, User, HelpCircle, Film, BookOpen, AlertCircle, Link2
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Recommendation } from '../types';
+import { letterboxdMovies, LetterboxdMovie, findMovieByUrlOrSlug, parseLetterboxdUrlToMovie } from '../letterboxdDb';
 
 interface RecommendationsProps {
   recommendations: Recommendation[];
@@ -28,8 +30,54 @@ export default function Recommendations({
   const [year, setYear] = useState<number>(2024);
   const [genre, setGenre] = useState('Sci-Fi/Drama');
   const [notes, setNotes] = useState('');
+  const [posterUrl, setPosterUrl] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // AI loading and error states
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+
+  const fetchAiMovieDetails = async () => {
+    const query = title.trim();
+    if (!query) {
+      setAiError('Please enter a film title first to fetch details.');
+      return;
+    }
+    setIsAiLoading(true);
+    setAiError('');
+    try {
+      const res = await fetch('/api/movie-details', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ movieQuery: query }),
+      });
+      if (!res.ok) {
+        throw new Error('Could not fetch movie details. Please try again.');
+      }
+      const data = await res.json();
+      if (data.title) setTitle(data.title);
+      if (data.director) setDirector(data.director);
+      if (data.year) setYear(Number(data.year));
+      if (data.genre) setGenre(data.genre);
+      if (data.posterUrl) setPosterUrl(data.posterUrl);
+      
+      setSuccessMsg(`✨ AI successfully populated details for "${data.title}"!`);
+      setTimeout(() => setSuccessMsg(''), 4500);
+    } catch (err: any) {
+      console.error(err);
+      setAiError(err.message || 'Error occurred during AI fetching.');
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  // Letterboxd integration states
+  const [letterboxdInput, setLetterboxdInput] = useState('');
+  const [lbSuggestions, setLbSuggestions] = useState<LetterboxdMovie[]>([]);
+  const [selectedMovie, setSelectedMovie] = useState<LetterboxdMovie | null>(null);
 
   const handleVote = (id: string) => {
     if (!currentUser) {
@@ -37,6 +85,54 @@ export default function Recommendations({
       return;
     }
     onVoteRecommendation(id, currentUser.email);
+  };
+
+  const handleLetterboxdInputChange = (val: string) => {
+    setLetterboxdInput(val);
+    
+    // Check if it's a Letterboxd URL
+    if (val.toLowerCase().includes('letterboxd.com/film/')) {
+      const parsed = parseLetterboxdUrlToMovie(val);
+      setTitle(parsed.title);
+      setYear(parsed.year);
+      
+      // Look up if we have the full details locally
+      const localMatch = findMovieByUrlOrSlug(val);
+      if (localMatch) {
+        setDirector(localMatch.director);
+        setGenre(localMatch.genre.join(', '));
+        setSelectedMovie(localMatch);
+      } else {
+        setDirector('');
+        setGenre('Drama');
+        setSelectedMovie(null);
+      }
+      setLbSuggestions([]);
+      return;
+    }
+
+    // Otherwise, treat as title search inside Letterboxd database
+    if (val.trim().length >= 2) {
+      const query = val.toLowerCase().trim();
+      const filtered = letterboxdMovies.filter(m => 
+        m.title.toLowerCase().includes(query) || 
+        m.director.toLowerCase().includes(query) ||
+        m.genre.some(g => g.toLowerCase().includes(query))
+      );
+      setLbSuggestions(filtered);
+    } else {
+      setLbSuggestions([]);
+    }
+  };
+
+  const selectLetterboxdMovie = (movie: LetterboxdMovie) => {
+    setTitle(movie.title);
+    setDirector(movie.director);
+    setYear(movie.year);
+    setGenre(movie.genre.join(', '));
+    setLetterboxdInput(movie.letterboxdUrl);
+    setSelectedMovie(movie);
+    setLbSuggestions([]);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -56,14 +152,19 @@ export default function Recommendations({
       director: director.trim(),
       year: Number(year),
       genre: genre.trim(),
-      notes: notes.trim()
+      notes: notes.trim(),
+      posterUrl: posterUrl.trim() || undefined
     });
 
+    // Reset states
     setTitle('');
     setDirector('');
     setYear(2024);
     setGenre('Sci-Fi/Drama');
     setNotes('');
+    setPosterUrl('');
+    setLetterboxdInput('');
+    setSelectedMovie(null);
     setErrorMsg('');
     setSuccessMsg('Film recommendation logged successfully!');
     setTimeout(() => setSuccessMsg(''), 4000);
@@ -107,7 +208,17 @@ export default function Recommendations({
         <div>
           {currentUser ? (
             <button
-              onClick={() => setShowSubmitModal(true)}
+              onClick={() => {
+                setShowSubmitModal(true);
+                setTitle('');
+                setDirector('');
+                setYear(2024);
+                setGenre('Sci-Fi/Drama');
+                setNotes('');
+                setLetterboxdInput('');
+                setSelectedMovie(null);
+                setLbSuggestions([]);
+              }}
               id="btn-recommend-trigger"
               className="flex items-center space-x-2 bg-amber-500 hover:bg-amber-600 text-zinc-950 px-5 py-2.5 rounded-xl font-bold text-sm transition-transform hover:scale-102 shadow-lg shadow-amber-500/10 cursor-pointer"
             >
@@ -115,8 +226,8 @@ export default function Recommendations({
               <span>Recommend a Movie</span>
             </button>
           ) : (
-            <div className="text-amber-500/80 bg-amber-500/5 px-4 py-2.5 rounded-xl border border-amber-500/10 text-xs font-mono">
-              🔑 Login to submit recommendations
+            <div className="text-amber-500/80 bg-amber-500/5 px-4 py-2.5 rounded-xl border border-amber-500/10 text-xs font-mono animate-pulse">
+              🔑 Sign in with your IISER email to recommend
             </div>
           )}
         </div>
@@ -128,7 +239,7 @@ export default function Recommendations({
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
           <input
             type="text"
-            placeholder="Search by title, genre, director..."
+            placeholder="Search wishlist..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full rounded-lg border border-zinc-900 bg-zinc-900/40 py-2 pl-9 pr-4 text-xs text-zinc-100 placeholder-zinc-500 focus:border-amber-500/50 focus:outline-none"
@@ -186,55 +297,68 @@ export default function Recommendations({
             return (
               <div
                 key={rec.id}
-                className="group flex flex-col justify-between rounded-xl border border-zinc-900 bg-zinc-950 p-5 shadow-lg hover:border-zinc-800 transition-all duration-300"
+                className="group flex flex-col sm:flex-row gap-4 justify-between rounded-xl border border-zinc-900 bg-zinc-950 p-5 shadow-lg hover:border-zinc-800 transition-all duration-300 animate-fadeIn"
               >
-                <div>
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div>
-                      <span className="text-[9.5px] uppercase font-mono font-bold text-amber-500/80 bg-amber-500/5 border border-amber-500/10 px-2 py-0.5 rounded">
-                        {rec.genre}
-                      </span>
-                      <h3 className="font-serif text-lg font-bold text-zinc-100 tracking-tight mt-1.5">
-                        {rec.title} <span className="text-zinc-500 font-normal">({rec.year})</span>
-                      </h3>
-                      <p className="text-xs text-zinc-400">
-                        Director: <span className="text-zinc-300 font-medium">{rec.director}</span>
-                      </p>
+                {rec.posterUrl && (
+                  <div className="w-24 h-36 shrink-0 rounded-lg overflow-hidden border border-zinc-900 bg-zinc-900 shadow-md self-center sm:self-start">
+                    <img 
+                      src={rec.posterUrl} 
+                      alt={rec.title} 
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                  </div>
+                )}
+                
+                <div className="flex-1 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div>
+                        <span className="text-[9.5px] uppercase font-mono font-bold text-amber-500/80 bg-amber-500/5 border border-amber-500/10 px-2 py-0.5 rounded">
+                          {rec.genre}
+                        </span>
+                        <h3 className="font-serif text-lg font-bold text-zinc-100 tracking-tight mt-1.5 leading-snug">
+                          {rec.title} <span className="text-zinc-550 font-normal">({rec.year})</span>
+                        </h3>
+                        <p className="text-xs text-zinc-400 mt-0.5">
+                          Director: <span className="text-zinc-300 font-medium">{rec.director}</span>
+                        </p>
+                      </div>
+
+                      {/* Voting lever column */}
+                      <button
+                        onClick={() => handleVote(rec.id)}
+                        className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all border shrink-0 scale-95 cursor-pointer ${
+                          hasUpvoted
+                            ? 'bg-amber-500 border-amber-400 text-zinc-950'
+                            : 'bg-zinc-900/60 border-zinc-800 hover:border-amber-500/30 text-zinc-400 hover:text-amber-400'
+                        }`}
+                      >
+                        <ArrowUp className={`h-4.5 w-4.5 ${hasUpvoted ? 'stroke-[3]' : 'animate-bounce'}`} />
+                        <span className="text-xs font-extrabold font-mono mt-0.5">{rec.votes.length}</span>
+                      </button>
                     </div>
 
-                    {/* Voting lever column */}
-                    <button
-                      onClick={() => handleVote(rec.id)}
-                      className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all border shrink-0 scale-95 cursor-pointer ${
-                        hasUpvoted
-                          ? 'bg-amber-500 border-amber-400 text-zinc-950'
-                          : 'bg-zinc-900/60 border-zinc-800 hover:border-amber-500/30 text-zinc-400 hover:text-amber-400'
-                      }`}
-                    >
-                      <ArrowUp className={`h-4.5 w-4.5 ${hasUpvoted ? 'stroke-[3]' : 'animate-bounce'}`} />
-                      <span className="text-xs font-extrabold font-mono mt-0.5">{rec.votes.length}</span>
-                    </button>
+                    {/* Submission note explaining reason */}
+                    <div className="mt-4 bg-zinc-900/50 p-3.5 rounded-xl border border-zinc-900/60 text-xs italic text-zinc-300 relative">
+                      <span className="absolute -top-1.5 left-3 bg-zinc-950 px-1 font-mono text-[9px] text-zinc-500 uppercase not-italic font-bold tracking-wider">
+                        Why Screen This?
+                      </span>
+                      "{rec.notes}"
+                    </div>
                   </div>
 
-                  {/* Submission note explaining reason */}
-                  <div className="mt-4 bg-zinc-900/50 p-3.5 rounded-xl border border-zinc-900/60 text-xs italic text-zinc-300 relative">
-                    <span className="absolute -top-1.5 left-3 bg-zinc-950 px-1 font-mono text-[9px] text-zinc-500 uppercase not-italic font-bold tracking-wider">
-                      Why Screen This?
+                  <div className="mt-5 pt-3 border-t border-zinc-900/80 flex items-center justify-between text-[11px] text-zinc-500">
+                    <span className="flex items-center gap-1 font-mono">
+                      <User className="h-3 w-3 text-zinc-600" />
+                      Suggested by <span className="text-zinc-300 font-semibold">{rec.suggestedByName}</span>
                     </span>
-                    "{rec.notes}"
+
+                    <span className="flex items-center gap-1 font-mono text-[10px]">
+                      <Calendar className="h-3 w-3 text-zinc-600" />
+                      {new Date(rec.suggestedAt).toLocaleDateString()}
+                    </span>
                   </div>
-                </div>
-
-                <div className="mt-5 pt-3 border-t border-zinc-900/80 flex items-center justify-between text-[11px] text-zinc-500">
-                  <span className="flex items-center gap-1 font-mono">
-                    <User className="h-3 w-3 text-zinc-600" />
-                    Suggested by <span className="text-zinc-300 font-semibold">{rec.suggestedByName}</span>
-                  </span>
-
-                  <span className="flex items-center gap-1 font-mono text-[10px]">
-                    <Calendar className="h-3 w-3 text-zinc-600" />
-                    {new Date(rec.suggestedAt).toLocaleDateString()}
-                  </span>
                 </div>
               </div>
             );
@@ -280,17 +404,108 @@ export default function Recommendations({
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4 text-sm text-zinc-300">
+              
+              {/* Intelligent Letterboxd autofill search bar */}
+              <div className="bg-zinc-900/80 border border-zinc-800 p-4 rounded-xl space-y-3">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-amber-500 flex items-center gap-1 px-1.5 py-0.5 bg-amber-500/5 rounded border border-amber-500/10 font-bold uppercase tracking-wider text-[10px]">
+                    🍿 LETTERBOXD SEARCH & AUTOFILL
+                  </span>
+                  <span className="text-zinc-500 text-[10px]/none">Cinephile Auto-Select</span>
+                </div>
+                
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-zinc-500">
+                    <Link2 className="h-3.5 w-3.5" />
+                  </span>
+                  <input
+                    type="text"
+                    value={letterboxdInput}
+                    onChange={(e) => handleLetterboxdInputChange(e.target.value)}
+                    placeholder="Type movie name (e.g. Inception) or paste film URL"
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 pl-9 pr-3 text-xs text-zinc-100 placeholder-zinc-500 focus:border-amber-500/50 focus:outline-none"
+                  />
+
+                  {lbSuggestions.length > 0 && (
+                    <div className="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl divide-y divide-zinc-900">
+                      {lbSuggestions.map(movie => (
+                        <button
+                          key={movie.id}
+                          type="button"
+                          onClick={() => selectLetterboxdMovie(movie)}
+                          className="w-full px-3 py-2.5 text-left text-xs hover:bg-zinc-900 flex items-center gap-3 transition-colors cursor-pointer"
+                        >
+                          <img 
+                            src={movie.posterUrl} 
+                            className="w-7 h-10 object-cover rounded shrink-0 bg-zinc-800 border border-zinc-800/50" 
+                            referrerPolicy="no-referrer" 
+                          />
+                          <div>
+                            <div className="font-bold text-zinc-200">{movie.title} <span className="text-zinc-550 font-normal">({movie.year})</span></div>
+                            <div className="text-[10px] text-zinc-500 font-mono mt-0.5">Dir: {movie.director} • {movie.genre.slice(0, 2).join(', ')}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {selectedMovie && (
+                  <div className="flex items-start gap-3 bg-zinc-950/65 p-2.5 rounded-lg border border-zinc-800">
+                    <img 
+                      src={selectedMovie.posterUrl} 
+                      className="w-10 h-14 object-cover rounded border border-zinc-800 shrink-0" 
+                      referrerPolicy="no-referrer" 
+                    />
+                    <div className="text-xs space-y-0.5">
+                      <div className="font-bold text-amber-500 font-mono text-[10px] uppercase">Selected Masterpiece</div>
+                      <div className="font-serif font-bold text-zinc-100 leading-tight">{selectedMovie.title} ({selectedMovie.year})</div>
+                      <div className="text-[11px] text-zinc-400">Director: {selectedMovie.director}</div>
+                      <div className="text-[10px] text-zinc-500 font-mono">{selectedMovie.genre.join(', ')}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Form entries - editable */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-mono text-zinc-400 mb-1">MOVIE TITLE *</label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-mono text-zinc-400">MOVIE TITLE *</label>
+                    <button
+                      type="button"
+                      onClick={fetchAiMovieDetails}
+                      disabled={isAiLoading || !title.trim()}
+                      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded cursor-pointer transition-all border ${
+                        title.trim() 
+                          ? 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-500' 
+                          : 'bg-zinc-900 border-zinc-800 text-zinc-500 cursor-not-allowed'
+                      }`}
+                    >
+                      {isAiLoading ? '⌛ FETCHING...' : '✨ AUTOFILL VIA AI'}
+                    </button>
+                  </div>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Arrival"
                     value={title}
-                    onChange={(e) => setTitle(e.target.value)}
+                    onChange={(e) => {
+                      setTitle(e.target.value);
+                      setSelectedMovie(null);
+                    }}
                     className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-550 focus:border-amber-500/50 focus:outline-none"
                   />
+                  {aiError && <p className="text-[10px] text-red-400 mt-1">{aiError}</p>}
+                  {posterUrl && (
+                    <div className="mt-2.5 flex items-center gap-2.5 bg-zinc-900/40 p-1.5 rounded-lg border border-zinc-850">
+                      <img src={posterUrl} className="w-8 h-11 object-cover rounded border border-zinc-800" referrerPolicy="no-referrer" />
+                      <div>
+                        <span className="block text-[9px] font-bold font-mono text-amber-500">POSTER ACQUIRED</span>
+                        <span className="block text-[10px] text-zinc-400">Artwork loaded from cinema database</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -300,7 +515,10 @@ export default function Recommendations({
                     required
                     placeholder="e.g. Denis Villeneuve"
                     value={director}
-                    onChange={(e) => setDirector(e.target.value)}
+                    onChange={(e) => {
+                      setDirector(e.target.value);
+                      setSelectedMovie(null);
+                    }}
                     className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-550 focus:border-amber-500/50 focus:outline-none"
                   />
                 </div>
@@ -312,7 +530,10 @@ export default function Recommendations({
                   <input
                     type="number"
                     value={year}
-                    onChange={(e) => setYear(Number(e.target.value))}
+                    onChange={(e) => {
+                      setYear(Number(e.target.value));
+                      setSelectedMovie(null);
+                    }}
                     className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 focus:border-amber-500/50 focus:outline-none"
                   />
                 </div>
@@ -321,10 +542,13 @@ export default function Recommendations({
                   <label className="block text-xs font-mono text-zinc-400 mb-1">GENRES / TAGS</label>
                   <input
                     type="text"
-                    placeholder="e.g. Sci-Fi / Thriller"
+                    placeholder="e.g. Sci-Fi, Thriller"
                     value={genre}
-                    onChange={(e) => setGenre(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none"
+                    onChange={(e) => {
+                      setGenre(e.target.value);
+                      setSelectedMovie(null);
+                    }}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
                   />
                 </div>
               </div>
@@ -332,7 +556,7 @@ export default function Recommendations({
               <div>
                 <label className="block text-xs font-mono text-zinc-400 mb-1.5">SCREENING ESSAY / MOTIVATION *</label>
                 <textarea
-                  rows={4}
+                  rows={3}
                   required
                   placeholder="In 2 to 3 lines, motivate why the film carries merit (concept, sound design, academic themes, philosophical depth or cinematic mastery) and why the IISER Kolkata student club must screen it..."
                   value={notes}

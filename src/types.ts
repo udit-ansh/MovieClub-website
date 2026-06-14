@@ -50,6 +50,7 @@ export interface Recommendation {
   suggestedByName: string; // calculated from email
   suggestedAt: string;
   votes: string[]; // array of student emails who upvoted
+  posterUrl?: string;
 }
 
 export interface User {

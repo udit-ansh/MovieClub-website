@@ -6,6 +6,8 @@ import {
 
 import { Screening, PastMovie, Recommendation, User, UserReview } from './types';
 import { initialScreenings, initialPastMovies, initialRecommendations } from './initialData';
+import { auth } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 import Navbar from './components/Navbar';
 import ScreeningSchedule from './components/ScreeningSchedule';
@@ -61,6 +63,33 @@ export default function App() {
       setRecommendations(initialRecommendations);
       localStorage.setItem('iiser_movie_recs', JSON.stringify(initialRecommendations));
     }
+  }, []);
+
+  // Listen to real Firebase auth status changes and auto-login if authenticated
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        const email = firebaseUser.email ? firebaseUser.email.toLowerCase() : '';
+        const extMatch = email.endsWith('@iiserkol.ac.in');
+        const isDevUser = email === 'uditansh2507@gmail.com' || email === 'uditansh2007@gmail.com';
+
+        if (extMatch || isDevUser) {
+          const name = firebaseUser.displayName || 'IISER-K Member';
+          let role: 'admin' | 'student' = 'student';
+          if (email === 'movie.activity@iiserkol.ac.in' || email.startsWith('admin.')) {
+            role = 'admin';
+          }
+          const userObj: User = { email, name, role };
+          setCurrentUser(userObj);
+          localStorage.setItem('iiser_movie_user', JSON.stringify(userObj));
+          if (role === 'admin') {
+            setAdminMode(true);
+          }
+        }
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // Sync methods
@@ -203,7 +232,7 @@ export default function App() {
             </h2>
             
             <p className="mt-4 text-sm sm:text-base text-zinc-400 max-w-2xl leading-relaxed">
-              We look beyond blockbuster boundaries to discover avant-garde scripts, acoustic masterpieces, and historic movements. Cinephilia brings the best index of international world cinema directly to the LHC G-06 auditorium.
+              We look beyond blockbuster boundaries to discover avant-garde scripts, acoustic masterpieces, and historic movements. Cinephilia brings the best index of international world cinema directly to the M.N. Saha Auditorium, Ground Floor, TRC building.
             </p>
 
             {/* Quick stats board */}
@@ -214,11 +243,11 @@ export default function App() {
               </div>
               <div className="flex items-center space-x-2">
                 <Users className="h-4.5 w-4.5 text-amber-500/70" />
-                <span>Patrons: <b className="text-zinc-300">450+ IISER Students</b></span>
+                <span>Patrons: <b className="text-zinc-300">2000+ Students</b></span>
               </div>
               <div className="flex items-center space-x-2">
                 <MapPin className="h-4.5 w-4.5 text-amber-500/70" />
-                <span>Regular Base: <b className="text-zinc-300">LHC G-06 Auditorium</b></span>
+                <span>Regular Base: <b className="text-zinc-300">M.N. Saha Auditorium, Ground Floor, TRC building</b></span>
               </div>
             </div>
           </div>
@@ -287,7 +316,7 @@ export default function App() {
             <span className="text-zinc-800">•</span>
             <a href="https://iiserkol.ac.in" target="_blank" rel="noreferrer" className="hover:text-amber-400 transition-colors">IISER Kolkata Main</a>
             <span className="text-zinc-800">•</span>
-            <span className="text-zinc-600">LHC G-06, Mohanpur, West Bengal 741246</span>
+            <span className="text-zinc-600">M.N. Saha Auditorium, Ground Floor, TRC building, Mohanpur, West Bengal 741246</span>
           </div>
 
           <div className="text-center md:text-right">
