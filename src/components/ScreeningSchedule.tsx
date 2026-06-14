@@ -1,0 +1,573 @@
+import React, { useState } from 'react';
+import { 
+  Calendar, Clock, MapPin, Film, Plus, Edit2, Trash2, Globe, Eye,
+  Clock3, Star, Sparkles, ExternalLink, Bell, Check, X, Tag
+} from 'lucide-react';
+import { Screening } from '../types';
+
+interface ScreeningScheduleProps {
+  screenings: Screening[];
+  adminMode: boolean;
+  onAddScreening: (screening: Omit<Screening, 'id'>) => void;
+  onUpdateScreening: (screening: Screening) => void;
+  onDeleteScreening: (id: string) => void;
+  currentUserEmail?: string;
+}
+
+export default function ScreeningSchedule({
+  screenings,
+  adminMode,
+  onAddScreening,
+  onUpdateScreening,
+  onDeleteScreening,
+  currentUserEmail
+}: ScreeningScheduleProps) {
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [editingScreening, setEditingScreening] = useState<Screening | null>(null);
+  
+  // Form fields
+  const [title, setTitle] = useState('');
+  const [director, setDirector] = useState('');
+  const [year, setYear] = useState<number>(2024);
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
+  const [venue, setVenue] = useState('LHC G-06 Seminar Hall');
+  const [description, setDescription] = useState('');
+  const [posterUrl, setPosterUrl] = useState('');
+  const [backdropUrl, setBackdropUrl] = useState('');
+  const [runtime, setRuntime] = useState('120 min');
+  const [genreInput, setGenreInput] = useState('');
+  const [language, setLanguage] = useState('English (with Subs)');
+  const [trailerUrl, setTrailerUrl] = useState('');
+  const [feedbackMsg, setFeedbackMsg] = useState('');
+
+  // Local reminders simulation status
+  const [reminders, setReminders] = useState<Record<string, boolean>>({});
+
+  const openAddForm = () => {
+    setEditingScreening(null);
+    setTitle('');
+    setDirector('');
+    setYear(2024);
+    setDate('');
+    setTime('18:30');
+    setVenue('LHC G-06 Seminar Hall');
+    setDescription('');
+    setPosterUrl('https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=600&auto=format&fit=crop'); // Cinema screen Unsplash
+    setBackdropUrl('https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=1200&auto=format&fit=crop');
+    setRuntime('120 min');
+    setGenreInput('Drama, Sci-Fi');
+    setLanguage('English (with English subtitles)');
+    setTrailerUrl('');
+    setShowFormModal(true);
+  };
+
+  const openEditForm = (screening: Screening) => {
+    setEditingScreening(screening);
+    setTitle(screening.title);
+    setDirector(screening.director);
+    setYear(screening.year);
+    setDate(screening.date);
+    setTime(screening.time);
+    setVenue(screening.venue);
+    setDescription(screening.description);
+    setPosterUrl(screening.posterUrl);
+    setBackdropUrl(screening.backdropUrl || '');
+    setRuntime(screening.runtime);
+    setGenreInput(screening.genre.join(', '));
+    setLanguage(screening.language);
+    setTrailerUrl(screening.trailerUrl || '');
+    setShowFormModal(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsedGenres = genreInput.split(',').map(g => g.trim()).filter(g => g.length > 0);
+    
+    // Quick validation
+    if (!title || !director || !date || !time) {
+      alert('Please fill out all required fields: Title, Director, Date, and Time.');
+      return;
+    }
+
+    const screeningData = {
+      title,
+      director,
+      year: Number(year),
+      date,
+      time,
+      venue,
+      description,
+      posterUrl: posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=600&auto=format&fit=crop',
+      backdropUrl: backdropUrl || 'https://images.unsplash.com/photo-1489599850125-9fa8bf1144a8?q=80&w=1200&auto=format&fit=crop',
+      runtime,
+      genre: parsedGenres.length > 0 ? parsedGenres : ['Cinema'],
+      language,
+      trailerUrl: trailerUrl || undefined
+    };
+
+    if (editingScreening) {
+      onUpdateScreening({
+        ...screeningData,
+        id: editingScreening.id
+      });
+    } else {
+      onAddScreening(screeningData);
+    }
+    
+    setShowFormModal(false);
+  };
+
+  const toggleReminder = (id: string, movieTitle: string) => {
+    const hasReminder = reminders[id];
+    setReminders(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+
+    if (!hasReminder) {
+      const emailText = currentUserEmail ? `to ${currentUserEmail}` : "to your email";
+      setFeedbackMsg(`🔔 RSVPs acknowledged! Screening reminder sent ${emailText} for "${movieTitle}"`);
+      setTimeout(() => setFeedbackMsg(''), 5500);
+    }
+  };
+
+  // Helper to format screening time/countdown
+  const getCountdownText = (dateStr: string) => {
+    const screeningDate = new Date(dateStr);
+    const today = new Date();
+    // Zero out times for date-only comparison
+    screeningDate.setHours(0,0,0,0);
+    today.setHours(0,0,0,0);
+
+    const diffTime = screeningDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Screening Today 🍿';
+    if (diffDays === 1) return 'Tomorrow • Get Ready';
+    if (diffDays < 0) return 'Screened';
+    return `In ${diffDays} days`;
+  };
+
+  // Helper for prettier dates
+  const formatPrettyDate = (dateStr: string) => {
+    const options: any = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
+    return new Date(dateStr).toLocaleDateString('en-US', options);
+  };
+
+  return (
+    <div className="space-y-12">
+      {/* Dynamic Floating Feedback Alerts */}
+      {feedbackMsg && (
+        <div className="fixed bottom-6 right-6 z-50 bg-amber-500 text-zinc-950 px-5 py-4 rounded-xl shadow-xl border border-amber-400 font-medium flex items-center space-x-3 text-sm max-w-sm animate-bounce">
+          <Sparkles className="h-5 w-5 shrink-0" />
+          <span>{feedbackMsg}</span>
+        </div>
+      )}
+
+      {/* Header Info */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between border-b border-zinc-900 pb-6 gap-4">
+        <div>
+          <span className="text-amber-500 font-mono text-xs uppercase tracking-widest font-semibold flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5" /> Upcoming Screenings
+          </span>
+          <h2 className="font-serif text-3xl font-bold text-zinc-100 tracking-tight sm:text-4xl mt-1">
+            Now Screening
+          </h2>
+          <p className="text-sm text-zinc-400 mt-2 max-w-2xl leading-relaxed">
+            Cinephilia brings specialized film curator choices to IISER Kolkata. screenings are open to all students, faculties, fellowship researchers, and staff. Join us for discussion sessions after each show!
+          </p>
+        </div>
+        
+        {adminMode && (
+          <button
+            onClick={openAddForm}
+            id="btn-add-screening"
+            className="flex items-center space-x-2 bg-amber-500 hover:bg-amber-600 text-zinc-950 px-5 py-2.5 rounded-xl font-bold text-sm transition-transform hover:scale-102 shadow-lg shadow-amber-500/15 cursor-pointer self-start md:self-auto"
+          >
+            <Plus className="h-4.5 w-4.5" />
+            <span>Add Screening</span>
+          </button>
+        )}
+      </div>
+
+      {/* Empty States */}
+      {screenings.length === 0 && (
+        <div className="text-center py-20 border border-dashed border-zinc-900 rounded-2xl bg-zinc-950/20">
+          <Film className="h-12 w-12 text-zinc-700 mx-auto mb-4" />
+          <h3 className="font-serif text-xl font-semibold text-zinc-300">No screenings scheduled yet</h3>
+          <p className="text-zinc-500 text-sm mt-1 max-w-sm mx-auto">
+            Check back later or ask administrators in the club to coordinate the upcoming schedules.
+          </p>
+          {adminMode && (
+            <button
+              onClick={openAddForm}
+              className="mt-6 bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-500/10 px-4 py-2 rounded-lg text-xs font-mono cursor-pointer"
+            >
+              Initialize First Entry
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Upcoming Screenings list */}
+      <div className="grid grid-cols-1 gap-10">
+        {screenings.map((screening, index) => {
+          const countdown = getCountdownText(screening.date);
+          const isToday = countdown.includes('Today');
+
+          return (
+            <div 
+              key={screening.id}
+              className="group relative flex flex-col lg:flex-row rounded-3xl border border-zinc-900/60 bg-zinc-950 overflow-hidden shadow-2xl transition-all duration-300 hover:border-zinc-800/80 hover:shadow-amber-500/[0.02]"
+            >
+              {/* Corner Accent for Admin */}
+              {adminMode && (
+                <div className="absolute top-4 right-4 z-20 flex items-center space-x-1.5 bg-zinc-900/90 border border-zinc-800 p-1.5 rounded-xl">
+                  <button
+                    onClick={() => openEditForm(screening)}
+                    className="p-2 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                    title="Edit entry"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Remove "${screening.title}" from upcoming schedule?`)) {
+                        onDeleteScreening(screening.id);
+                      }
+                    }}
+                    className="p-2 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                    title="Delete entry"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+
+              {/* Backdrop Art Section (Left Side Image in desktop, Top in mobile) */}
+              <div className="relative w-full lg:w-[35%] h-64 lg:h-auto min-h-[300px] overflow-hidden">
+                <img 
+                  src={screening.posterUrl} 
+                  alt={screening.title} 
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t lg:bg-gradient-to-r from-zinc-950 via-zinc-950/40 to-transparent"></div>
+
+                {/* Date overlay left corner */}
+                <div className="absolute bottom-4 left-4 flex flex-col space-y-1 bg-zinc-950/80 backdrop-blur-md px-3.5 py-2.5 rounded-xl border border-zinc-800/80">
+                  <span className="font-mono text-amber-500 font-bold text-xs uppercase tracking-wider">
+                    {countdown}
+                  </span>
+                  <span className="text-zinc-500 text-[10px] uppercase font-mono">
+                    Countdown Status
+                  </span>
+                </div>
+              </div>
+
+              {/* Description Details Content */}
+              <div className="flex-1 p-6 sm:p-8 flex flex-col justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    {screening.genre.map((g, i) => (
+                      <span key={i} className="flex items-center text-[10px] font-semibold font-mono tracking-wider text-zinc-400 bg-zinc-900 border border-zinc-850 px-2 py-0.5 rounded-md uppercase">
+                        {g}
+                      </span>
+                    ))}
+                    <span className="text-zinc-500 text-xs">•</span>
+                    <span className="text-zinc-400 text-xs font-semibold">{screening.runtime}</span>
+                  </div>
+
+                  <h3 className="font-serif text-2xl sm:text-3xl font-bold text-zinc-100 tracking-tight group-hover:text-amber-400 transition-colors">
+                    {screening.title} <span className="text-zinc-500 font-normal text-lg">({screening.year})</span>
+                  </h3>
+                  
+                  <p className="text-zinc-400 text-xs mt-1">
+                    Director: <span className="text-zinc-300 font-medium">{screening.director}</span>
+                  </p>
+
+                  <p className="text-zinc-300 text-sm mt-4 leading-relaxed line-clamp-3">
+                    {screening.description}
+                  </p>
+
+                  {/* Metadata Row for logistics */}
+                  <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 gap-4 border-t border-b border-zinc-900/80 py-4 font-mono text-xs">
+                    <div className="space-y-1">
+                      <span className="text-zinc-500 block uppercase text-[10px]">Screening Date</span>
+                      <span className="text-zinc-200 flex items-center font-semibold gap-1.5">
+                        <Calendar className="h-3.5 w-3.5 text-amber-500/80" />
+                        {formatPrettyDate(screening.date)}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-zinc-500 block uppercase text-[10px]">Showtime</span>
+                      <span className="text-zinc-200 flex items-center font-semibold gap-1.5">
+                        <Clock className="h-3.5 w-3.5 text-amber-500/80" />
+                        {screening.time} IST
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 col-span-2 sm:col-span-1">
+                      <span className="text-zinc-500 block uppercase text-[10px]">IISER Venue</span>
+                      <span className="text-zinc-200 flex items-center font-semibold gap-1.5 truncate" title={screening.venue}>
+                        <MapPin className="h-3.5 w-3.5 text-amber-500/80" />
+                        {screening.venue}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer row action triggers */}
+                <div className="mt-6 pt-2 flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center space-x-2 text-xs font-mono text-zinc-500">
+                    <Globe className="h-3.5 w-3.5 text-zinc-600" />
+                    <span>Language:</span>
+                    <span className="text-zinc-300 font-medium">{screening.language}</span>
+                  </div>
+
+                  <div className="flex items-center space-x-3">
+                    {screening.trailerUrl && (
+                      <a 
+                        href={screening.trailerUrl} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="flex items-center space-x-1 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200 px-4 py-2 rounded-xl text-xs font-medium bg-zinc-950/60 transition-colors"
+                      >
+                        <span>Trailer</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+
+                    <button
+                      onClick={() => toggleReminder(screening.id, screening.title)}
+                      className={`flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                        reminders[screening.id]
+                          ? 'bg-amber-500 text-zinc-950'
+                          : 'bg-zinc-900 border border-zinc-800 hover:border-amber-500/30 text-zinc-300'
+                      }`}
+                    >
+                      {reminders[screening.id] ? (
+                        <>
+                          <Check className="h-3.5 w-3.5" />
+                          <span>RSVP Confirmed</span>
+                        </>
+                      ) : (
+                        <>
+                          <Bell className="h-3.5 w-3.5 text-amber-400" />
+                          <span>RSVP & Remind Me</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer Info Box */}
+      <div className="rounded-2xl border border-zinc-900 bg-zinc-950/40 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center space-x-3 text-center sm:text-left">
+          <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/10 text-amber-500">
+            <Clock3 className="h-5 w-5" />
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-zinc-200">Have a venue preference?</h4>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Normally screenings occur at LHC G-06 or MND Auditorium. Check specific events for gate details.
+            </p>
+          </div>
+        </div>
+        <p className="text-xs font-mono text-zinc-500 text-center sm:text-right">
+          Cinephilia Club coordinate • IISER Kolkata
+        </p>
+      </div>
+
+      {/* Unified Add/Edit Screening Modal */}
+      {showFormModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-2xl border border-zinc-850 bg-zinc-950 p-6 shadow-2xl relative my-8">
+            <button
+              onClick={() => setShowFormModal(false)}
+              className="absolute top-4 right-4 p-2 text-zinc-500 hover:text-zinc-200 rounded-lg cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="mb-5">
+              <span className="text-xs font-mono text-amber-500 uppercase tracking-widest font-semibold">
+                {editingScreening ? 'Update Coordinate' : 'Publish Schedule'}
+              </span>
+              <h2 className="font-serif text-xl font-bold text-zinc-100 mt-1">
+                {editingScreening ? `Edit Screening: ${editingScreening.title}` : 'Schedule New Screening Event'}
+              </h2>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4 text-sm text-zinc-300">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-mono text-zinc-400 mb-1">MOVIE TITLE *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Inception"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono text-zinc-400 mb-1">DIRECTOR *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Christopher Nolan"
+                    value={director}
+                    onChange={(e) => setDirector(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-mono text-zinc-400 mb-1">RELEASE YEAR</label>
+                  <input
+                    type="number"
+                    value={year}
+                    onChange={(e) => setYear(Number(e.target.value))}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 focus:border-amber-500/50 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono text-zinc-400 mb-1">RUNNING TIME</label>
+                  <input
+                    type="text"
+                    value={runtime}
+                    onChange={(e) => setRuntime(e.target.value)}
+                    placeholder="e.g. 148 min"
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono text-zinc-400 mb-1">LANGUAGE</label>
+                  <input
+                    type="text"
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    placeholder="e.g. English"
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-mono text-zinc-400 mb-1">SCREENING DATE *</label>
+                  <input
+                    type="date"
+                    required
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 focus:border-amber-500/50 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono text-zinc-400 mb-1">SHOWTIME (IST) *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 18:30"
+                    value={time}
+                    onChange={(e) => setTime(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 focus:border-amber-500/50 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono text-zinc-400 mb-1">IISER VENUE</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. LHC G-06"
+                    value={venue}
+                    onChange={(e) => setVenue(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 focus:border-amber-500/50 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono text-zinc-400 mb-1">GENRES (comma-separated)</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Sci-Fi, Thriller, Action"
+                  value={genreInput}
+                  onChange={(e) => setGenreInput(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-mono text-zinc-400 mb-1">POSTER ARTWORK URL</label>
+                  <input
+                    type="url"
+                    placeholder="Provide image link"
+                    value={posterUrl}
+                    onChange={(e) => setPosterUrl(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono text-zinc-400 mb-1">TRAILER YOUTUBE LINK</label>
+                  <input
+                    type="url"
+                    placeholder="Provide trailer link"
+                    value={trailerUrl}
+                    onChange={(e) => setTrailerUrl(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono text-zinc-400 mb-1">SYNOPSIS / HIGHLIGHTS</label>
+                <textarea
+                  rows={3}
+                  placeholder="Provide a compelling preview review or description describing why this film is selected..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500/50 focus:outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-3 border-t border-zinc-900">
+                <button
+                  type="button"
+                  onClick={() => setShowFormModal(false)}
+                  className="px-4 py-2 text-sm font-semibold text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-amber-500 hover:bg-amber-600 text-zinc-950 px-5 py-2 rounded-lg text-sm font-semibold transition-colors font-mono cursor-pointer"
+                >
+                  {editingScreening ? 'PUBLISH CHANGES' : 'CREATE SCREENING'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
