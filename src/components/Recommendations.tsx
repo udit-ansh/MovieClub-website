@@ -6,6 +6,7 @@ import {
 import { motion } from 'motion/react';
 import { Recommendation } from '../types';
 import { letterboxdMovies, LetterboxdMovie, findMovieByUrlOrSlug, parseLetterboxdUrlToMovie } from '../letterboxdDb';
+import { compressAndResizeImage } from '../utils/imageCompressor';
 
 interface RecommendationsProps {
   recommendations: Recommendation[];
@@ -36,29 +37,27 @@ export default function Recommendations({
 
   // Poster image file upload
   const [posterFileError, setPosterFileError] = useState('');
+  const [isPosterCompressing, setIsPosterCompressing] = useState(false);
 
-  const handlePosterFileUpload = (file: File) => {
+  const handlePosterFileUpload = async (file: File) => {
     setPosterFileError('');
     if (!file.type.startsWith('image/')) {
       setPosterFileError('Please select a valid image file (PNG, JPG, WebP, SVG).');
       return;
     }
-    if (file.size > 800 * 1024) {
-      setPosterFileError('File size is too large. Image must be under 800KB for database performance.');
-      return;
-    }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (e.target?.result && typeof e.target.result === 'string') {
-        setPosterUrl(e.target.result);
-        setSelectedMovie(null);
-      }
-    };
-    reader.onerror = () => {
-      setPosterFileError('Failed to parse uploaded image.');
-    };
-    reader.readAsDataURL(file);
+    setIsPosterCompressing(true);
+    try {
+      // Compress to optimal dimensions (350x500px, quality 0.7)
+      const compressedB64 = await compressAndResizeImage(file, 350, 500, 0.7);
+      setPosterUrl(compressedB64);
+      setSelectedMovie(null);
+    } catch (err) {
+      console.error(err);
+      setPosterFileError('Failed to process and compress uploaded image.');
+    } finally {
+      setIsPosterCompressing(false);
+    }
   };
 
   // AI loading and error states
@@ -252,14 +251,19 @@ export default function Recommendations({
       return;
     }
 
-    onAddRecommendation({
+    const recPayload: any = {
       title: title.trim(),
       director: director.trim(),
       year: Number(year),
       genre: genre.trim(),
-      notes: notes.trim(),
-      posterUrl: posterUrl.trim() || undefined
-    });
+      notes: notes.trim()
+    };
+
+    if (posterUrl && posterUrl.trim()) {
+      recPayload.posterUrl = posterUrl.trim();
+    }
+
+    onAddRecommendation(recPayload);
 
     // Reset states
     setTitle('');
@@ -634,14 +638,23 @@ export default function Recommendations({
                         }}
                         className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900/60 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
                       />
-                      <label className="flex items-center gap-1 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 rounded px-2.5 py-1.5 text-[10px] font-mono font-bold text-zinc-200 cursor-pointer transition-all shrink-0">
-                        <Upload className="h-3 w-3 text-amber-500" />
-                        <span>UPLOAD FILE</span>
+                      <label 
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 rounded px-2.5 py-1.5 text-[10px] font-mono font-bold text-zinc-200 cursor-pointer transition-all shrink-0"
+                      >
+                        {isPosterCompressing ? (
+                          <span className="animate-spin h-3 w-3 border-b border-amber-500 rounded-full inline-block"></span>
+                        ) : (
+                          <Upload className="h-3 w-3 text-amber-500" />
+                        )}
+                        <span>{isPosterCompressing ? 'COMPRESSING...' : 'UPLOAD FILE'}</span>
                         <input
                           type="file"
                           accept="image/*"
                           className="hidden"
+                          disabled={isPosterCompressing}
                           onChange={(e) => {
+                            e.stopPropagation();
                             const file = e.target.files?.[0];
                             if (file) handlePosterFileUpload(file);
                           }}
@@ -665,7 +678,7 @@ export default function Recommendations({
                         <div className="min-w-0 flex-1">
                           <span className="block text-[9px] font-bold font-mono text-amber-500">POSTER PREVIEW</span>
                           <span className="block text-[9px] text-zinc-500 truncate font-mono">
-                            {posterUrl.startsWith('data:') ? 'Custom uploaded (Base64)' : posterUrl}
+                            {posterUrl.startsWith('data:') ? 'Custom uploaded (Compressed)' : posterUrl}
                           </span>
                         </div>
                         {posterUrl.startsWith('data:') && (

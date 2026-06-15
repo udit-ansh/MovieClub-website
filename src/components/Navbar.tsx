@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Film, User as UserIcon, LogOut, Shield, ShieldCheck, HelpCircle, GraduationCap, Camera, UploadCloud, Image as ImageIcon } from 'lucide-react';
 import { User } from '../types';
 import { auth, googleProvider } from '../firebase';
-import { signInWithPopup, signOut as fbSignOut } from 'firebase/auth';
+import { signInWithPopup, signOut as fbSignOut, signInAnonymously } from 'firebase/auth';
 
 interface NavbarProps {
   currentUser: User | null;
@@ -190,9 +190,15 @@ export default function Navbar({
       const email = user.email ? user.email.toLowerCase() : '';
       const name = user.displayName || 'Club Coordinator';
       
-      if (email !== 'movie.activity@iiserkol.ac.in') {
+      const isAllowedAdmin = 
+        email === 'movie.activity@iiserkol.ac.in' || 
+        email === 'uditansh2007@gmail.com' || 
+        email === 'uditansh2507@gmail.com' ||
+        email.startsWith('admin.');
+
+      if (!isAllowedAdmin) {
         await fbSignOut(auth);
-        setErrorMsg('Administrative access denied. Only movie.activity@iiserkol.ac.in is authorized for Google coordinate access.');
+        setErrorMsg('Administrative access denied. Only authorized Movie Club coordinators are permitted access.');
         return;
       }
       
@@ -217,18 +223,26 @@ export default function Navbar({
     setIsGoogleCustom(false);
   };
 
-  const handleAdminAuthSubmit = (e: React.FormEvent) => {
+  const handleAdminAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (passwordInput === 'admin123') {
-      setAdminMode(true);
-      if (currentUser) {
-        onLogin(currentUser.email, currentUser.name, 'admin');
-      } else {
-        onLogin('admin.movieclub@iiserkol.ac.in', 'Club Administrator', 'admin');
+      try {
+        // Authenticate with Firebase anonymously to grant authorized database permission
+        await signInAnonymously(auth);
+        
+        setAdminMode(true);
+        if (currentUser) {
+          onLogin(currentUser.email, currentUser.name, 'admin');
+        } else {
+          onLogin('admin.movieclub@iiserkol.ac.in', 'Club Administrator', 'admin');
+        }
+        setShowAdminVerify(false);
+        setPasswordInput('');
+        setErrorMsg('');
+      } catch (err: any) {
+        console.error('Anonymous Administration Auth error:', err);
+        setErrorMsg('Failed to establish secure anonymous administrator database session support.');
       }
-      setShowAdminVerify(false);
-      setPasswordInput('');
-      setErrorMsg('');
     } else {
       setErrorMsg('Incorrect passcode. Use experimental password: admin123');
     }

@@ -6,6 +6,7 @@ import {
 import { motion } from 'motion/react';
 import { Screening } from '../types';
 import { letterboxdMovies, LetterboxdMovie, findMovieByUrlOrSlug, parseLetterboxdUrlToMovie } from '../letterboxdDb';
+import { compressAndResizeImage } from '../utils/imageCompressor';
 
 interface ScreeningScheduleProps {
   screenings: Screening[];
@@ -54,53 +55,49 @@ export default function ScreeningSchedule({
   // Poster & Backdrop image upload handlers
   const [posterFileError, setPosterFileError] = useState('');
   const [backdropFileError, setBackdropFileError] = useState('');
+  const [isPosterCompressing, setIsPosterCompressing] = useState(false);
+  const [isBackdropCompressing, setIsBackdropCompressing] = useState(false);
 
-  const handlePosterFileUpload = (file: File) => {
+  const handlePosterFileUpload = async (file: File) => {
     setPosterFileError('');
     if (!file.type.startsWith('image/')) {
       setPosterFileError('Please select an image file (PNG, JPG, WebP, SVG).');
       return;
     }
-    if (file.size > 800 * 1024) {
-      setPosterFileError('File size is too large. Image must be under 800KB for database performance.');
-      return;
-    }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (e.target?.result && typeof e.target.result === 'string') {
-        setPosterUrl(e.target.result);
-        setSelectedMovie(null);
-      }
-    };
-    reader.onerror = () => {
-      setPosterFileError('Failed to parse upload asset data.');
-    };
-    reader.readAsDataURL(file);
+    setIsPosterCompressing(true);
+    try {
+      // Compress to optimal dimensions (350x500px, quality 0.7) for efficient storage and fast rendering
+      const compressedB64 = await compressAndResizeImage(file, 350, 500, 0.7);
+      setPosterUrl(compressedB64);
+      setSelectedMovie(null);
+    } catch (err) {
+      console.error(err);
+      setPosterFileError('Failed to process and compress uploaded poster.');
+    } finally {
+      setIsPosterCompressing(false);
+    }
   };
 
-  const handleBackdropFileUpload = (file: File) => {
+  const handleBackdropFileUpload = async (file: File) => {
     setBackdropFileError('');
     if (!file.type.startsWith('image/')) {
       setBackdropFileError('Please select an image file (PNG, JPG, WebP, SVG).');
       return;
     }
-    if (file.size > 800 * 1024) {
-      setBackdropFileError('File size is too large. Backdrop must be under 800KB.');
-      return;
-    }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (e.target?.result && typeof e.target.result === 'string') {
-        setBackdropUrl(e.target.result);
-        setSelectedMovie(null);
-      }
-    };
-    reader.onerror = () => {
-      setBackdropFileError('Failed to parse backdrop upload.');
-    };
-    reader.readAsDataURL(file);
+    setIsBackdropCompressing(true);
+    try {
+      // Compress to optimal widescreen banner dimensions (800x450px, quality 0.65)
+      const compressedB64 = await compressAndResizeImage(file, 800, 450, 0.65);
+      setBackdropUrl(compressedB64);
+      setSelectedMovie(null);
+    } catch (err) {
+      console.error(err);
+      setBackdropFileError('Failed to process and compress uploaded backdrop.');
+    } finally {
+      setIsBackdropCompressing(false);
+    }
   };
 
   // AI autofill state
@@ -329,7 +326,7 @@ export default function ScreeningSchedule({
       return;
     }
 
-    const screeningData = {
+    const screeningData: any = {
       title,
       director,
       year: Number(year),
@@ -342,8 +339,11 @@ export default function ScreeningSchedule({
       runtime,
       genre: parsedGenres.length > 0 ? parsedGenres : ['Cinema'],
       language,
-      trailerUrl: trailerUrl || undefined
     };
+
+    if (trailerUrl && trailerUrl.trim()) {
+      screeningData.trailerUrl = trailerUrl.trim();
+    }
 
     if (editingScreening) {
       onUpdateScreening({
@@ -873,14 +873,23 @@ export default function ScreeningSchedule({
                         }}
                         className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
                       />
-                      <label className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs font-mono font-bold text-zinc-200 cursor-pointer transition-all shrink-0">
-                        <Upload className="h-3.5 w-3.5 text-amber-500" />
-                        <span>UPLOAD FILE</span>
+                      <label 
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs font-mono font-bold text-zinc-200 cursor-pointer transition-all shrink-0"
+                      >
+                        {isPosterCompressing ? (
+                          <span className="animate-spin h-3.5 w-3.5 border-b-2 border-amber-500 rounded-full inline-block"></span>
+                        ) : (
+                          <Upload className="h-3.5 w-3.5 text-amber-500" />
+                        )}
+                        <span>{isPosterCompressing ? 'COMPRESSING...' : 'UPLOAD FILE'}</span>
                         <input
                           type="file"
                           accept="image/*"
                           className="hidden"
+                          disabled={isPosterCompressing}
                           onChange={(e) => {
+                            e.stopPropagation();
                             const file = e.target.files?.[0];
                             if (file) handlePosterFileUpload(file);
                           }}
@@ -898,12 +907,12 @@ export default function ScreeningSchedule({
                           className="w-8 h-12 object-cover rounded border border-zinc-800 bg-zinc-900 shrink-0"
                           referrerPolicy="no-referrer"
                           onError={(e) => {
-                            e.currentTarget.src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=100';
+                             e.currentTarget.src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=100';
                           }}
                         />
                         <div className="min-w-0 flex-1">
                           <p className="text-[9px] text-zinc-500 truncate font-mono">
-                            {posterUrl.startsWith('data:') ? '🔌 CUSTOM UPLOADED IMAGE (BASE64)' : posterUrl}
+                            {posterUrl.startsWith('data:') ? '🔌 CUSTOM UPLOADED IMAGE (COMPRESSED)' : posterUrl}
                           </p>
                         </div>
                         {posterUrl.startsWith('data:') && (
@@ -933,14 +942,23 @@ export default function ScreeningSchedule({
                         }}
                         className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs text-zinc-100 placeholder-zinc-650 focus:border-amber-500/50 focus:outline-none"
                       />
-                      <label className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs font-mono font-bold text-zinc-200 cursor-pointer transition-all shrink-0">
-                        <Upload className="h-3.5 w-3.5 text-amber-500" />
-                        <span>UPLOAD FILE</span>
+                      <label 
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs font-mono font-bold text-zinc-200 cursor-pointer transition-all shrink-0"
+                      >
+                        {isBackdropCompressing ? (
+                          <span className="animate-spin h-3.5 w-3.5 border-b-2 border-amber-500 rounded-full inline-block"></span>
+                        ) : (
+                          <Upload className="h-3.5 w-3.5 text-amber-500" />
+                        )}
+                        <span>{isBackdropCompressing ? 'COMPRESSING...' : 'UPLOAD FILE'}</span>
                         <input
                           type="file"
                           accept="image/*"
                           className="hidden"
+                          disabled={isBackdropCompressing}
                           onChange={(e) => {
+                            e.stopPropagation();
                             const file = e.target.files?.[0];
                             if (file) handleBackdropFileUpload(file);
                           }}
