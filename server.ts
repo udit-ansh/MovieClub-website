@@ -25,14 +25,36 @@ async function startServer() {
 // Helper to request metadata directly from IMDb or Letterboxd pages
 async function fetchUrlMetadata(url: string) {
   try {
-    const cleanUrl = url.trim();
-    const isImdb = /imdb\.com\/title\/(tt\d+)/i.test(cleanUrl) || /\b(tt\d+)\b/i.test(cleanUrl);
-    const isLetterboxd = /letterboxd\.com\/film\/([a-z0-9\-]+)/i.test(cleanUrl);
+    let cleanUrl = url.trim();
 
-    if (!isImdb && !isLetterboxd) return null;
+    // Check for raw IMDb IDs (like tt1234567) or links
+    const rawImdbIdMatch = cleanUrl.match(/\b(tt\d{7,10})\b/i);
+    const hasImdbDomain = /imdb\.com/i.test(cleanUrl);
 
-    console.log(`[Metadata Scraper] Pre-fetching URL: ${cleanUrl}`);
-    const response = await fetch(cleanUrl, {
+    let isImdb = false;
+    let isLetterboxd = false;
+
+    if (rawImdbIdMatch && !hasImdbDomain) {
+      // User entered a raw IMDb ID! Turn it into a full URL.
+      cleanUrl = `https://www.imdb.com/title/${rawImdbIdMatch[1]}/`;
+      isImdb = true;
+    } else {
+      isImdb = /imdb\.com\/title\/(tt\d+)/i.test(cleanUrl);
+      isLetterboxd = /letterboxd\.com\/film\/([a-z0-9\-]+)/i.test(cleanUrl);
+    }
+
+    if (!isImdb && !isLetterboxd) {
+      console.log(`[Metadata Scraper] URL does not match IMDb or Letterboxd signatures: ${cleanUrl}`);
+      return null;
+    }
+
+    let targetUrl = cleanUrl;
+    if (!/^https?:\/\//i.test(targetUrl)) {
+      targetUrl = 'https://' + targetUrl;
+    }
+
+    console.log(`[Metadata Scraper] Pre-fetching URL: ${targetUrl}`);
+    const response = await fetch(targetUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -86,7 +108,7 @@ async function fetchUrlMetadata(url: string) {
       description = description.replace(/^Directed by [^.]+\.\s*With [^.]+\.\s*/i, '');
       description = description.replace(/^[^:]+:\s*/, ''); // strip "Title (Year):" prefix if present
       
-      const idMatch = cleanUrl.match(/(tt\d+)/);
+      const idMatch = targetUrl.match(/(tt\d+)/);
       const imdbId = idMatch ? idMatch[1] : '';
 
       return {
@@ -104,7 +126,7 @@ async function fetchUrlMetadata(url: string) {
       const year = yearMatch ? parseInt(yearMatch[1], 10) : null;
       title = title.replace(/\s*\(\d{4}\)/, '').trim();
 
-      const slugMatch = cleanUrl.match(/letterboxd\.com\/film\/([a-z0-9\-]+)/i);
+      const slugMatch = targetUrl.match(/letterboxd\.com\/film\/([a-z0-9\-]+)/i);
       const letterboxdSlug = slugMatch ? slugMatch[1] : '';
 
       return {
@@ -165,33 +187,64 @@ async function fetchUrlMetadata(url: string) {
       }
 
       // Fetch rich metadata using Structured JSON Schema and Google Search Grounding to find actual references
-      const gResponse = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: `Find complete, highly accurate and precise cinematic metadata details for the movie query/reference: "${geminiQueryPrompt}". 
-        ${focalIdInstructions}
-        Find the exact official release year, director name, runtime duration (e.g. '130 min' or '1h 55m'), genre list, a complete synoptic description, its exact Letterboxd slug (e.g., 'tumbbad', 'perfect-days'), and its exact Wikipedia page title (e.g., 'Tumbbad (film)'). Also find a beautiful widescreen photographic landscape backdrop URL and a premium quality poster (ideally TMDB/Wikipedia).`,
-        config: {
-          systemInstruction: "You are a professional cinema curator for the IISER Kolkata Movie Club. Search movie archives and retrieve precise metadata. Return the synopsis/description concisely (approx 100-150 words). Format the genre as a comma-separated list. If backdrop or poster urls cannot be found, populate placeholders or tmdb URLs.",
-          tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING, description: "Standard official title of the movie." },
-              year: { type: Type.INTEGER, description: "Correct release calendar year." },
-              description: { type: Type.STRING, description: "Compelling cinematic synopsis of the movie (under 150 words)." },
-              director: { type: Type.STRING, description: "Director of the film." },
-              duration: { type: Type.STRING, description: "Runtime format, e.g. '130 min' or '1h 55m'." },
-              genre: { type: Type.STRING, description: "Primary genre(s) formatted as a comma-separated list, e.g. 'Drama, Thriller, Sci-Fi'." },
-              letterboxdSlug: { type: Type.STRING, description: "The lowercase official Letterboxd URL slug, e.g. 'tumbbad', 'perfect-days'." },
-              wikipediaTitle: { type: Type.STRING, description: "The exact Wikipedia title suitable for URL encoding, e.g. 'Tumbbad (film)'." },
-              posterUrl: { type: Type.STRING, description: "A high-quality movie poster URL. Prefer TMDB poster URL if found." },
-              backdropUrl: { type: Type.STRING, description: "Widescreen background image/snapshot of the movie." }
-            },
-            required: ["title", "year", "description", "director", "duration", "genre", "letterboxdSlug", "wikipediaTitle", "posterUrl", "backdropUrl"]
+      let gResponse;
+      try {
+        gResponse = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: `Find complete, highly accurate and precise cinematic metadata details for the movie query/reference: "${geminiQueryPrompt}". 
+          ${focalIdInstructions}
+          Find the exact official release year, director name, runtime duration (e.g. '130 min' or '1h 55m'), genre list, a complete synoptic description, its exact Letterboxd slug (e.g., 'tumbbad', 'perfect-days'), and its exact Wikipedia page title (e.g., 'Tumbbad (film)'). Also find a beautiful widescreen photographic landscape backdrop URL and a premium quality poster (ideally TMDB/Wikipedia).`,
+          config: {
+            systemInstruction: "You are a professional cinema curator for the IISER Kolkata Movie Club. Search movie archives and retrieve precise metadata. Return the synopsis/description concisely (approx 100-150 words). Format the genre as a comma-separated list. If backdrop or poster urls cannot be found, populate placeholders or tmdb URLs.",
+            tools: [{ googleSearch: {} }],
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING, description: "Standard official title of the movie." },
+                year: { type: Type.INTEGER, description: "Correct release calendar year." },
+                description: { type: Type.STRING, description: "Compelling cinematic synopsis of the movie (under 150 words)." },
+                director: { type: Type.STRING, description: "Director of the film." },
+                duration: { type: Type.STRING, description: "Runtime format, e.g. '130 min' or '1h 55m'." },
+                genre: { type: Type.STRING, description: "Primary genre(s) formatted as a comma-separated list, e.g. 'Drama, Thriller, Sci-Fi'." },
+                letterboxdSlug: { type: Type.STRING, description: "The lowercase official Letterboxd URL slug, e.g. 'tumbbad', 'perfect-days'." },
+                wikipediaTitle: { type: Type.STRING, description: "The exact Wikipedia title suitable for URL encoding, e.g. 'Tumbbad (film)'." },
+                posterUrl: { type: Type.STRING, description: "A high-quality movie poster URL. Prefer TMDB poster URL if found." },
+                backdropUrl: { type: Type.STRING, description: "Widescreen background image/snapshot of the movie." }
+              },
+              required: ["title", "year", "description", "director", "duration", "genre", "letterboxdSlug", "wikipediaTitle", "posterUrl", "backdropUrl"]
+            }
           }
-        }
-      });
+        });
+      } catch (searchError) {
+        console.warn("[Server] Gemini content generation with search grounding failed. Retrying without search grounding...", searchError);
+        gResponse = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: `Find complete, highly accurate and precise cinematic metadata details for the movie query/reference: "${geminiQueryPrompt}". 
+          ${focalIdInstructions}
+          Find the exact official release year, director name, runtime duration (e.g. '130 min' or '1h 55m'), genre list, a complete synoptic description, its exact Letterboxd slug (e.g., 'tumbbad', 'perfect-days'), and its exact Wikipedia page title (e.g., 'Tumbbad (film)'). Also find a beautiful widescreen photographic landscape backdrop URL and a premium quality poster (ideally TMDB/Wikipedia).`,
+          config: {
+            systemInstruction: "You are a professional cinema curator for the IISER Kolkata Movie Club. Search movie archives and retrieve precise metadata. Return the synopsis/description concisely (approx 100-150 words). Format the genre as a comma-separated list. If backdrop or poster urls cannot be found, populate placeholders or tmdb URLs.",
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING, description: "Standard official title of the movie." },
+                year: { type: Type.INTEGER, description: "Correct release calendar year." },
+                description: { type: Type.STRING, description: "Compelling cinematic synopsis of the movie (under 150 words)." },
+                director: { type: Type.STRING, description: "Director of the film." },
+                duration: { type: Type.STRING, description: "Runtime format, e.g. '130 min' or '1h 55m'." },
+                genre: { type: Type.STRING, description: "Primary genre(s) formatted as a comma-separated list, e.g. 'Drama, Thriller, Sci-Fi'." },
+                letterboxdSlug: { type: Type.STRING, description: "The lowercase official Letterboxd URL slug, e.g. 'tumbbad', 'perfect-days'." },
+                wikipediaTitle: { type: Type.STRING, description: "The exact Wikipedia title suitable for URL encoding, e.g. 'Tumbbad (film)'." },
+                posterUrl: { type: Type.STRING, description: "A high-quality movie poster URL. Prefer TMDB poster URL if found." },
+                backdropUrl: { type: Type.STRING, description: "Widescreen background image/snapshot of the movie." }
+              },
+              required: ["title", "year", "description", "director", "duration", "genre", "letterboxdSlug", "wikipediaTitle", "posterUrl", "backdropUrl"]
+            }
+          }
+        });
+      }
 
       const textOutput = gResponse.text;
       if (!textOutput) {
@@ -286,34 +339,66 @@ async function fetchUrlMetadata(url: string) {
     try {
       const isUrl = query.toLowerCase().includes("imdb.com/") || query.toLowerCase().includes("letterboxd.com/");
       
-      const gResponse = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: `Search Google for movies matching: "${query}". Return a structured list of up to 4 most matching movies. If the query is an IMDb link or Letterboxd film link, resolve details for that single exact movie. For each movie, find its title, year, director, runtime (e.g. '120 min'), genre(s) comma-separated, a short 1-sentence description, a Letterboxd slug (e.g. 'inception'), a Wikipedia title, and a high-quality poster (prefer TMDB URLs or high-quality posters from search).`,
-        config: {
-          systemInstruction: "You are a professional cinema curator. Provide search suggestions for matches with precise title, year, director, runtime duration, comma-separated genres, and standard web poster artwork URLs.",
-          tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING },
-                year: { type: Type.INTEGER },
-                description: { type: Type.STRING, description: "Concise 1-sentence synopsis." },
-                director: { type: Type.STRING },
-                duration: { type: Type.STRING, description: "e.g. '120 min'" },
-                genre: { type: Type.STRING, description: "e.g. 'Drama, Thriller'" },
-                letterboxdSlug: { type: Type.STRING },
-                wikipediaTitle: { type: Type.STRING },
-                posterUrl: { type: Type.STRING },
-                backdropUrl: { type: Type.STRING }
-              },
-              required: ["title", "year", "description", "director", "duration", "genre", "letterboxdSlug", "wikipediaTitle", "posterUrl", "backdropUrl"]
+      let gResponse;
+      try {
+        gResponse = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: `Search Google for movies matching: "${query}". Return a structured list of up to 4 most matching movies. If the query is an IMDb link or Letterboxd film link, resolve details for that single exact movie. For each movie, find its title, year, director, runtime (e.g. '120 min'), genre(s) comma-separated, a short 1-sentence description, a Letterboxd slug (e.g. 'inception'), a Wikipedia title, and a high-quality poster (prefer TMDB URLs or high-quality posters from search).`,
+          config: {
+            systemInstruction: "You are a professional cinema curator. Provide search suggestions for matches with precise title, year, director, runtime duration, comma-separated genres, and standard web poster artwork URLs.",
+            tools: [{ googleSearch: {} }],
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  year: { type: Type.INTEGER },
+                  description: { type: Type.STRING, description: "Concise 1-sentence synopsis." },
+                  director: { type: Type.STRING },
+                  duration: { type: Type.STRING, description: "e.g. '120 min'" },
+                  genre: { type: Type.STRING, description: "e.g. 'Drama, Thriller'" },
+                  letterboxdSlug: { type: Type.STRING },
+                  wikipediaTitle: { type: Type.STRING },
+                  posterUrl: { type: Type.STRING },
+                  backdropUrl: { type: Type.STRING }
+                },
+                required: ["title", "year", "description", "director", "duration", "genre", "letterboxdSlug", "wikipediaTitle", "posterUrl", "backdropUrl"]
+              }
             }
           }
-        }
-      });
+        });
+      } catch (searchError) {
+        console.warn("[Server Autocomplete] Autocomplete search grounding failed, retrying without grounding...", searchError);
+        gResponse = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: `Find up to 4 classic or modern movies matching the keyword search: "${query}". For each movie, find its title, year, director, runtime (e.g. '120 min'), genre(s) comma-separated, a short 1-sentence description, a Letterboxd slug (e.g. 'inception'), a Wikipedia title, and a high-quality poster (prefer TMDB URLs or high-quality posters).`,
+          config: {
+            systemInstruction: "You are a professional cinema curator. Provide search suggestions for matches with precise title, year, director, runtime duration, comma-separated genres, and standard web poster artwork URLs.",
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  year: { type: Type.INTEGER },
+                  description: { type: Type.STRING, description: "Concise 1-sentence synopsis." },
+                  director: { type: Type.STRING },
+                  duration: { type: Type.STRING, description: "e.g. '120 min'" },
+                  genre: { type: Type.STRING, description: "e.g. 'Drama, Thriller'" },
+                  letterboxdSlug: { type: Type.STRING },
+                  wikipediaTitle: { type: Type.STRING },
+                  posterUrl: { type: Type.STRING },
+                  backdropUrl: { type: Type.STRING }
+                },
+                required: ["title", "year", "description", "director", "duration", "genre", "letterboxdSlug", "wikipediaTitle", "posterUrl", "backdropUrl"]
+              }
+            }
+          }
+        });
+      }
 
       const textOutput = gResponse.text;
       if (!textOutput) {
