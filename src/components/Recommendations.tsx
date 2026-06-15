@@ -123,9 +123,16 @@ export default function Recommendations({
 
     const lowerQuery = query.toLowerCase();
 
-    // 1. Detect if it's an IMDb link or Letterboxd link
-    const isUrl = lowerQuery.includes('letterboxd.com/film/') || lowerQuery.includes('imdb.com/title/');
+    // 1. Detect if it's an IMDb link, Letterboxd link, or IMDb ID directly (tt1234567...)
+    const isUrl = lowerQuery.includes('letterboxd.com/film/') || 
+                  lowerQuery.includes('imdb.com/title/') || 
+                  lowerQuery.includes('imdb.com/title/tt') ||
+                  /\b(tt\d{7,10})\b/i.test(query) ||
+                  /^(https?:\/\/)?(www\.)?imdb\.com/i.test(query) ||
+                  /^(https?:\/\/)?(www\.)?letterboxd\.com/i.test(query);
+
     if (isUrl) {
+      setLbSuggestions([]); // clear suggestions list for URL inputs
       setIsAiLoading(true);
       setAiError('');
       try {
@@ -145,12 +152,14 @@ export default function Recommendations({
             
             setSuccessMsg(`✨ AI successfully resolved & populated details for "${detail.title}"!`);
             setTimeout(() => setSuccessMsg(''), 4500);
+            setLetterboxdInput(''); // empty input on success
           }
         } else {
           setAiError('Could not auto-scrape this link. Please enter manually.');
         }
       } catch (err: any) {
         console.warn("Autofill from link failed:", err);
+        setAiError('Could not auto-scrape this link. Please enter manually.');
       } finally {
         setIsAiLoading(false);
       }

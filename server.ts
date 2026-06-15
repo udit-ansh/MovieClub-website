@@ -22,6 +22,108 @@ async function startServer() {
     }
   });
 
+// Helper to request metadata directly from IMDb or Letterboxd pages
+async function fetchUrlMetadata(url: string) {
+  try {
+    const cleanUrl = url.trim();
+    const isImdb = /imdb\.com\/title\/(tt\d+)/i.test(cleanUrl) || /\b(tt\d+)\b/i.test(cleanUrl);
+    const isLetterboxd = /letterboxd\.com\/film\/([a-z0-9\-]+)/i.test(cleanUrl);
+
+    if (!isImdb && !isLetterboxd) return null;
+
+    console.log(`[Metadata Scraper] Pre-fetching URL: ${cleanUrl}`);
+    const response = await fetch(cleanUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      }
+    });
+
+    if (!response.ok) {
+      console.warn(`[Metadata Scraper] Fetch failed, HTTP status: ${response.status}`);
+      return null;
+    }
+
+    const html = await response.text();
+    if (!html) return null;
+
+    // Extract basic OG properties
+    const titleMatch = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i) 
+                    || html.match(/<title>([^<]+)<\/title>/i);
+    const descMatch = html.match(/<meta\s+property="og:description"\s+content="([^"]+)"/i)
+                   || html.match(/<meta\s+name="description"\s+content="([^"]+)"/i);
+    const imageMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i)
+                    || html.match(/<meta\s+name="twitter:image"\s+content="([^"]+)"/i);
+
+    let title = titleMatch ? titleMatch[1].trim() : '';
+    let description = descMatch ? descMatch[1].trim() : '';
+    let posterUrl = imageMatch ? imageMatch[1].trim() : '';
+
+    // Decode HTML entities if any
+    const decodeHtml = (str: string) => {
+      return str
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&apos;/g, "'");
+    };
+
+    title = decodeHtml(title);
+    description = decodeHtml(description);
+    posterUrl = decodeHtml(posterUrl);
+
+    if (isImdb) {
+      // IMDb OG title format is often "Title (Year) - IMDb" or "Title (Year) - Rating - IMDb"
+      title = title.replace(/\s*-\s*IMDb$/i, '');
+      const yearMatch = title.match(/\((\d{4})\)/);
+      const year = yearMatch ? parseInt(yearMatch[1], 10) : null;
+      title = title.replace(/\s*\(\d{4}\)/, '').trim();
+
+      // Clean the generic IMDb description prefix
+      description = description.replace(/^Directed by [^.]+\.\s*With [^.]+\.\s*/i, '');
+      description = description.replace(/^[^:]+:\s*/, ''); // strip "Title (Year):" prefix if present
+      
+      const idMatch = cleanUrl.match(/(tt\d+)/);
+      const imdbId = idMatch ? idMatch[1] : '';
+
+      return {
+        title,
+        year,
+        description,
+        posterUrl,
+        imdbId,
+        isImdb: true
+      };
+    }
+
+    if (isLetterboxd) {
+      const yearMatch = title.match(/\((\d{4})\)/);
+      const year = yearMatch ? parseInt(yearMatch[1], 10) : null;
+      title = title.replace(/\s*\(\d{4}\)/, '').trim();
+
+      const slugMatch = cleanUrl.match(/letterboxd\.com\/film\/([a-z0-9\-]+)/i);
+      const letterboxdSlug = slugMatch ? slugMatch[1] : '';
+
+      return {
+        title,
+        year,
+        description,
+        posterUrl,
+        letterboxdSlug,
+        isLetterboxd: true
+      };
+    }
+
+    return null;
+  } catch (err) {
+    console.warn('[Metadata Scraper] Failed to fetch URL metadata:', err);
+    return null;
+  }
+}
+
   // API Endpoint to fetch movie details utilizing Gemini Content Generation and live scrapers
   app.post("/api/movie-details", async (req, res) => {
     const { movieQuery } = req.body;
@@ -32,12 +134,44 @@ async function startServer() {
     console.log(`[Server] Resolving movie details for query/link: "${movieQuery}"`);
 
     try {
+      const cleanQuery = movieQuery.trim();
+      let scrapedMetadata = null;
+      
+      // Attempt pre-scraping for direct URL metadata if the input is a valid URL
+      if (cleanQuery.includes("http") || cleanQuery.includes("imdb.com") || cleanQuery.includes("letterboxd.com") || /\b(tt\d+)\b/i.test(cleanQuery)) {
+        scrapedMetadata = await fetchUrlMetadata(cleanQuery);
+      }
+
+      // Format clean query prompt for Gemini Search Grounding
+      let geminiQueryPrompt = cleanQuery;
+      let focalIdInstructions = "";
+
+      if (scrapedMetadata) {
+        console.log(`[Server] Scraper successfully resolved: "${scrapedMetadata.title}" (${scrapedMetadata.year})`);
+        geminiQueryPrompt = `Film Title: "${scrapedMetadata.title}" released in ${scrapedMetadata.year || 'unknown'}. Synopsis Context: "${scrapedMetadata.description}"`;
+        focalIdInstructions = `We have pre-matched the movie details as: Title: "${scrapedMetadata.title}", Year: ${scrapedMetadata.year || 'unknown'}. Perfect the details using Google search.`;
+      } else {
+        const imdbMatch = cleanQuery.match(/(tt\d+)/);
+        if (imdbMatch) {
+          focalIdInstructions = `The user specified IMDb ID: "${imdbMatch[1]}". Search Google for "IMDb ${imdbMatch[1]}" to resolve the exact film metadata.`;
+          geminiQueryPrompt = `IMDb ID ${imdbMatch[1]}`;
+        } else {
+          const lbMatch = cleanQuery.match(/letterboxd\.com\/film\/([a-z0-9\-]+)/i);
+          if (lbMatch) {
+            focalIdInstructions = `The user specified Letterboxd slug: "${lbMatch[1]}". Search Google for "Letterboxd film ${lbMatch[1]}" to resolve the exact film metadata.`;
+            geminiQueryPrompt = `Letterboxd film ${lbMatch[1]}`;
+          }
+        }
+      }
+
       // Fetch rich metadata using Structured JSON Schema and Google Search Grounding to find actual references
       const gResponse = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: `Search Google for the movie details: "${movieQuery}". If this is a URL (such as an IMDb link like imdb.com/title/... or a Letterboxd link like letterboxd.com/film/...), resolve the exact movie from that link. Find the official release year, director, runtime (e.g. '130 min'), genres, a synopsis, its exact Letterboxd slug (e.g., 'tumbbad', 'perfect-days'), and its exact Wikipedia page title (e.g., 'Tumbbad (film)'). Also find a widescreen photographic snapshot backdrop URL and a high-quality poster (ideally from TMDB/Wikipedia).`,
+        contents: `Find complete, highly accurate and precise cinematic metadata details for the movie query/reference: "${geminiQueryPrompt}". 
+        ${focalIdInstructions}
+        Find the exact official release year, director name, runtime duration (e.g. '130 min' or '1h 55m'), genre list, a complete synoptic description, its exact Letterboxd slug (e.g., 'tumbbad', 'perfect-days'), and its exact Wikipedia page title (e.g., 'Tumbbad (film)'). Also find a beautiful widescreen photographic landscape backdrop URL and a premium quality poster (ideally TMDB/Wikipedia).`,
         config: {
-          systemInstruction: "You are a professional cinema curator for the IISER Kolkata Movie Club. Search movie archives and retrieve precise metadata. Return the synopsis/description concisely (approx 100-150 words). Format the genre as a comma-separated list.",
+          systemInstruction: "You are a professional cinema curator for the IISER Kolkata Movie Club. Search movie archives and retrieve precise metadata. Return the synopsis/description concisely (approx 100-150 words). Format the genre as a comma-separated list. If backdrop or poster urls cannot be found, populate placeholders or tmdb URLs.",
           tools: [{ googleSearch: {} }],
           responseMimeType: "application/json",
           responseSchema: {
@@ -66,6 +200,11 @@ async function startServer() {
 
       const movieData = JSON.parse(textOutput.trim());
       
+      // Override empty or missing poster/backdrop with pre-scraped ones if found
+      if (scrapedMetadata && scrapedMetadata.posterUrl && (!movieData.posterUrl || movieData.posterUrl.includes("placeholder"))) {
+        movieData.posterUrl = scrapedMetadata.posterUrl;
+      }
+
       // Multi-layer actual movie poster retriever compiled server-side
       let realPosterUrl: string | null = null;
 
@@ -127,6 +266,7 @@ async function startServer() {
         movieData.posterUrl = realPosterUrl;
       }
 
+      console.log(`[Server] Successfully resolved details for: "${movieData.title}" (${movieData.year})`);
       res.json(movieData);
     } catch (e: any) {
       console.error("Gemini Movie Details Fetch Failure:", e);

@@ -11,9 +11,9 @@ import { compressAndResizeImage } from '../utils/imageCompressor';
 interface ScreeningScheduleProps {
   screenings: Screening[];
   adminMode: boolean;
-  onAddScreening: (screening: Omit<Screening, 'id'>) => void;
-  onUpdateScreening: (screening: Screening) => void;
-  onDeleteScreening: (id: string) => void;
+  onAddScreening: (screening: Omit<Screening, 'id'>) => void | Promise<any>;
+  onUpdateScreening: (screening: Screening) => void | Promise<any>;
+  onDeleteScreening: (id: string) => void | Promise<any>;
   currentUserEmail?: string;
 }
 
@@ -27,6 +27,8 @@ export default function ScreeningSchedule({
 }: ScreeningScheduleProps) {
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingScreening, setEditingScreening] = useState<Screening | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   
   // Form fields
   const [title, setTitle] = useState('');
@@ -153,9 +155,16 @@ export default function ScreeningSchedule({
 
     const lowerQuery = query.toLowerCase();
 
-    // 1. Detect if it's an IMDb link or Letterboxd link
-    const isUrl = lowerQuery.includes('letterboxd.com/film/') || lowerQuery.includes('imdb.com/title/');
+    // 1. Detect if it's an IMDb link, Letterboxd link, or IMDb ID directly (tt1234567...)
+    const isUrl = lowerQuery.includes('letterboxd.com/film/') || 
+                  lowerQuery.includes('imdb.com/title/') || 
+                  lowerQuery.includes('imdb.com/title/tt') ||
+                  /\b(tt\d{7,10})\b/i.test(query) ||
+                  /^(https?:\/\/)?(www\.)?imdb\.com/i.test(query) ||
+                  /^(https?:\/\/)?(www\.)?letterboxd\.com/i.test(query);
+
     if (isUrl) {
+      setLbSuggestions([]); // clear list for link uploads
       setIsAiLoading(true);
       setAiError('');
       try {
@@ -178,12 +187,14 @@ export default function ScreeningSchedule({
             
             setFeedbackMsg(`✨ Resolved & autofilled properties for "${detail.title}"!`);
             setTimeout(() => setFeedbackMsg(''), 4500);
+            setLetterboxdInput(''); // empty input on success
           }
         } else {
           setAiError('Could not auto-scrape this link. Please enter manually.');
         }
       } catch (err: any) {
         console.warn("Autofill from link failed:", err);
+        setAiError('Could not auto-scrape this link. Please enter manually.');
       } finally {
         setIsAiLoading(false);
       }
@@ -317,12 +328,15 @@ export default function ScreeningSchedule({
     setShowFormModal(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError('');
+    setIsSubmitting(true);
     const parsedGenres = genreInput.split(',').map(g => g.trim()).filter(g => g.length > 0);
     
     if (!title || !director || !date || !time) {
-      alert('Please fill out all required fields: Title, Director, Date, and Time.');
+      setSubmitError('Please fill out all required fields: Title, Director, Date, and Time.');
+      setIsSubmitting(false);
       return;
     }
 
@@ -345,16 +359,36 @@ export default function ScreeningSchedule({
       screeningData.trailerUrl = trailerUrl.trim();
     }
 
-    if (editingScreening) {
-      onUpdateScreening({
-        ...screeningData,
-        id: editingScreening.id
-      });
-    } else {
-      onAddScreening(screeningData);
+    try {
+      if (editingScreening) {
+        await onUpdateScreening({
+          ...screeningData,
+          id: editingScreening.id
+        });
+        setFeedbackMsg(`✨ Screening updated successfully!`);
+      } else {
+        await onAddScreening(screeningData);
+        setFeedbackMsg(`✨ Screening added successfully!`);
+      }
+      setTimeout(() => setFeedbackMsg(''), 4500);
+      setShowFormModal(false);
+    } catch (err: any) {
+      console.error("Failed to save screening:", err);
+      let parsedMsg = "";
+      try {
+        const parsedErr = JSON.parse(err.message);
+        if (parsedErr.error && parsedErr.error.includes("Permission denied")) {
+          parsedMsg = "Firebase Permission Denied: Your IISER Kolkata admin credentials or passcode login has expired or is unauthorized.";
+        } else {
+          parsedMsg = parsedErr.error || err.message;
+        }
+      } catch (e) {
+        parsedMsg = err.message || "Failed to publish. Check connection/credentials and try again.";
+      }
+      setSubmitError(parsedMsg);
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    setShowFormModal(false);
   };
 
   const toggleReminder = (id: string, movieTitle: string) => {
@@ -1024,19 +1058,34 @@ export default function ScreeningSchedule({
                 />
               </div>
 
+              {submitError && (
+                <div className="p-3.5 rounded-lg bg-red-950/40 border border-red-900/50 text-red-400 text-xs font-medium">
+                  {submitError}
+                </div>
+              )}
+
               <div className="flex justify-end space-x-3 pt-3 border-t border-zinc-900">
                 <button
                   type="button"
                   onClick={() => setShowFormModal(false)}
-                  className="px-4 py-2 text-sm font-semibold text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-sm font-semibold text-zinc-400 hover:text-zinc-200 cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="bg-amber-500 hover:bg-amber-600 text-zinc-950 px-5 py-2 rounded-lg text-sm font-semibold transition-colors font-mono cursor-pointer"
+                  disabled={isSubmitting}
+                  className="bg-amber-500 hover:bg-amber-600 text-zinc-950 px-5 py-2 rounded-lg text-sm font-semibold transition-colors font-mono flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
-                  {editingScreening ? 'PUBLISH CHANGES' : 'CREATE SCREENING'}
+                  {isSubmitting ? (
+                    <>
+                      <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-zinc-950"></span>
+                      <span>SAVING...</span>
+                    </>
+                  ) : (
+                    editingScreening ? 'PUBLISH CHANGES' : 'CREATE SCREENING'
+                  )}
                 </button>
               </div>
             </form>
