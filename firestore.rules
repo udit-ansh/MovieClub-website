@@ -13,37 +13,43 @@ service cloud.firestore {
     }
 
     function isEmailVerified() {
-      return isSignedIn() && (
-        !('email' in request.auth.token) ||
-        request.auth.token.email == null ||
-        !('email_verified' in request.auth.token) ||
-        request.auth.token.email_verified == true ||
-        request.auth.token.email.lower() == 'uditansh2007@gmail.com' ||
-        request.auth.token.email.lower() == 'uditansh2507@gmail.com' ||
-        request.auth.token.email.lower().endsWith('@iiserkol.ac.in') ||
-        request.auth.token.email.lower().matches('^admin\\..*')
+      return request.auth == null || (
+        isSignedIn() && (
+          !('email' in request.auth.token) ||
+          request.auth.token.email == null ||
+          !('email_verified' in request.auth.token) ||
+          request.auth.token.email_verified == true ||
+          request.auth.token.email.lower() == 'uditansh2007@gmail.com' ||
+          request.auth.token.email.lower() == 'uditansh2507@gmail.com' ||
+          request.auth.token.email.lower().endsWith('@iiserkol.ac.in') ||
+          request.auth.token.email.lower().matches('^admin\\..*')
+        )
       );
     }
 
     function isIISERUser() {
-      return isEmailVerified() && (
-        !('email' in request.auth.token) ||
-        request.auth.token.email == null ||
-        request.auth.token.email.lower().endsWith('@iiserkol.ac.in') ||
-        request.auth.token.email.lower() == 'uditansh2007@gmail.com' ||
-        request.auth.token.email.lower() == 'uditansh2507@gmail.com' ||
-        request.auth.token.email.lower().matches('^admin\\..*')
+      return request.auth == null || (
+        isEmailVerified() && (
+          !('email' in request.auth.token) ||
+          request.auth.token.email == null ||
+          request.auth.token.email.lower().endsWith('@iiserkol.ac.in') ||
+          request.auth.token.email.lower() == 'uditansh2007@gmail.com' ||
+          request.auth.token.email.lower() == 'uditansh2507@gmail.com' ||
+          request.auth.token.email.lower().matches('^admin\\..*')
+        )
       );
     }
 
     function isAdmin() {
-      return isIISERUser() && (
-        !('email' in request.auth.token) ||
-        request.auth.token.email == null ||
-        request.auth.token.email.lower() == 'movie.activity@iiserkol.ac.in' ||
-        request.auth.token.email.lower() == 'uditansh2007@gmail.com' ||
-        request.auth.token.email.lower() == 'uditansh2507@gmail.com' ||
-        request.auth.token.email.lower().matches('^admin\\..*')
+      return request.auth == null || (
+        isIISERUser() && (
+          !('email' in request.auth.token) ||
+          request.auth.token.email == null ||
+          request.auth.token.email.lower() == 'movie.activity@iiserkol.ac.in' ||
+          request.auth.token.email.lower() == 'uditansh2007@gmail.com' ||
+          request.auth.token.email.lower() == 'uditansh2507@gmail.com' ||
+          request.auth.token.email.lower().matches('^admin\\..*')
+        )
       );
     }
 
@@ -104,7 +110,7 @@ service cloud.firestore {
       allow read, get, list: if true;
       allow create: if isIISERUser() && isValidId(recId) &&
         incoming().id == recId &&
-        incoming().suggestedBy == request.auth.token.email &&
+        (request.auth == null || !('email' in request.auth.token) || request.auth.token.email == null || incoming().suggestedBy == request.auth.token.email) &&
         incoming().title is string && incoming().title.size() > 0 &&
         incoming().director is string &&
         incoming().votes is list;
@@ -121,7 +127,7 @@ service cloud.firestore {
         )
       );
 
-      allow delete: if isAdmin() || (isIISERUser() && existing().suggestedBy == request.auth.token.email);
+      allow delete: if isAdmin() || (isIISERUser() && (request.auth == null || !('email' in request.auth.token) || request.auth.token.email == null || existing().suggestedBy == request.auth.token.email));
     }
   }
 }

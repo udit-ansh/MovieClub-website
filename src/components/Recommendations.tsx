@@ -90,11 +90,11 @@ export default function Recommendations({
       if (data.genre) setGenre(data.genre);
       if (data.posterUrl) setPosterUrl(data.posterUrl);
       
-      setSuccessMsg(`✨ AI successfully populated details for "${data.title}"!`);
+      setSuccessMsg(`✨ Found details for "${data.title}"!`);
       setTimeout(() => setSuccessMsg(''), 4500);
     } catch (err: any) {
       console.error(err);
-      setAiError(err.message || 'Error occurred during AI fetching.');
+      setAiError(err.message || 'Error occurred while looking up movie details.');
     } finally {
       setIsAiLoading(false);
     }
@@ -107,7 +107,8 @@ export default function Recommendations({
 
   const handleVote = (id: string) => {
     if (!currentUser) {
-      alert('You must authenticate using your IISER Kolkata email ID before upvoting movies.');
+      setErrorMsg('You must authenticate using your IISER Kolkata email ID before upvoting movies.');
+      setTimeout(() => setErrorMsg(''), 5000);
       return;
     }
     onVoteRecommendation(id, currentUser.email);
@@ -150,16 +151,16 @@ export default function Recommendations({
             if (detail.genre) setGenre(detail.genre);
             if (detail.posterUrl) setPosterUrl(detail.posterUrl);
             
-            setSuccessMsg(`✨ AI successfully resolved & populated details for "${detail.title}"!`);
+            setSuccessMsg(`✨ Auto-filled details for "${detail.title}"!`);
             setTimeout(() => setSuccessMsg(''), 4500);
             setLetterboxdInput(''); // empty input on success
           }
         } else {
-          setAiError('Could not auto-scrape this link. Please enter manually.');
+          setAiError('Could not load details from this link. Please enter details manually.');
         }
       } catch (err: any) {
         console.warn("Autofill from link failed:", err);
-        setAiError('Could not auto-scrape this link. Please enter manually.');
+        setAiError('Could not load details from this link. Please enter details manually.');
       } finally {
         setIsAiLoading(false);
       }
@@ -397,6 +398,11 @@ export default function Recommendations({
           ✅ {successMsg}
         </div>
       )}
+      {errorMsg && !showSubmitModal && (
+        <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-4 text-xs text-red-400 font-mono">
+          ❌ {errorMsg}
+        </div>
+      )}
 
       {/* Grid List representation */}
       {filteredRecs.length === 0 ? (
@@ -491,9 +497,9 @@ export default function Recommendations({
       <div className="rounded-xl border border-zinc-900 bg-zinc-950/20 p-5 flex gap-3.5">
         <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
         <div className="text-xs space-y-1">
-          <h4 className="font-semibold text-zinc-300">How is a film selected from requests?</h4>
+          <h4 className="font-semibold text-zinc-300">How do student requests get screened?</h4>
           <p className="text-zinc-500 leading-relaxed">
-            The Movie Club panel checks the wishlist weekly. Higher votes guarantee serious consideration on screen feasibility (such as licensing requirements, subtitles Availability, and length limitations). Make sure your rationale highlights academic or philosophical resonance!
+            We review the community wishlist together. Upvote your favorite recommendations or add new ones! Films with more interest get scheduled for upcoming screenings. Let's make every movie night count!
           </p>
         </div>
       </div>
@@ -579,7 +585,7 @@ export default function Recommendations({
                 </div>
 
                 <p className="text-[10px] text-zinc-550 leading-normal leading-relaxed font-sans">
-                  💡 Hint: Paste any official IMDb title link URL (such as <span className="text-zinc-400 font-mono">imdb.com/title/tt1130884/</span>) or any Letterboxd film link, and our live scraper will load details & poster art immediately!
+                  💡 Hint: Search for a movie by name or paste an IMDb / Letterboxd link above, and we will automatically fill in the film details for you!
                 </p>
 
                 {selectedMovie && (
@@ -593,7 +599,7 @@ export default function Recommendations({
                       }}
                     />
                     <div className="text-xs space-y-0.5 min-w-0 flex-1">
-                      <div className="font-bold text-amber-500 font-mono text-[9px] uppercase tracking-wider">Active Import Profile</div>
+                      <div className="font-bold text-amber-500 font-mono text-[9px] uppercase tracking-wider">Selected Movie Details</div>
                       <div className="font-serif font-bold text-zinc-100 leading-tight truncate">{selectedMovie.title} ({selectedMovie.year})</div>
                       <div className="text-[11px] text-zinc-400 truncate">Director: {selectedMovie.director}</div>
                       <div className="text-[10px] text-zinc-500 font-mono max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{selectedMovie.genre.join(', ')}</div>
@@ -617,7 +623,7 @@ export default function Recommendations({
                           : 'bg-zinc-900 border-zinc-800 text-zinc-500 cursor-not-allowed'
                       }`}
                     >
-                      {isAiLoading ? '⌛ FETCHING...' : '✨ AUTOFILL VIA AI'}
+                      {isAiLoading ? '⌛ AUTOFILLING...' : '✨ QUICK AUTO-FILL'}
                     </button>
                   </div>
                   <input

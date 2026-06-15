@@ -78,7 +78,7 @@ export default function TriviaGame() {
           CineQuiz Arena
         </h2>
         <p className="text-xs text-zinc-500 mt-1 max-w-xl">
-          Weekly cinematic intelligence challenges for IISER Kolkata students. Solve cerebral trivia on sci-fi classics, world wave directors, and film acoustics.
+          Weekly film trivia for the Movie Club! Test your knowledge on modern hits, classics, indie favorites, and directorship.
         </p>
       </div>
 
@@ -116,8 +116,8 @@ export default function TriviaGame() {
           <div className="text-center py-10 space-y-6">
             <Award className="h-16 w-16 text-amber-400 mx-auto animate-bounce mt-2" />
             <div className="space-y-1">
-              <h3 className="font-serif text-2xl font-bold text-zinc-100">Intelligence Matrix Compiled</h3>
-              <p className="text-xs text-zinc-400 font-mono">IISER-K Cine-Scholar Certificate Earned!</p>
+              <h3 className="font-serif text-2xl font-bold text-zinc-100">Quiz Completed!</h3>
+              <p className="text-xs text-zinc-400 font-mono">Awesome job finishing the CineQuiz!</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto bg-zinc-900/40 p-4 rounded-xl border border-zinc-900">

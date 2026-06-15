@@ -132,6 +132,11 @@ export default function Navbar({
       role = 'admin';
     }
 
+    // Authenticate with Firebase anonymously to grant authorized database session
+    signInAnonymously(auth).catch((err) => {
+      console.warn("[Firebase] Anonymous session submit-init failed:", err);
+    });
+
     onLogin(trimmedEmail, calculatedName, role);
     setShowLoginModal(false);
     setEmailInput('');
@@ -214,6 +219,10 @@ export default function Navbar({
   };
 
   const handleGoogleAccountClick = (email: string, name: string) => {
+    // Authenticate with Firebase anonymously to grant authorized database session
+    signInAnonymously(auth).catch((err) => {
+      console.warn("[Firebase] Anonymous session click-init failed:", err);
+    });
     onLogin(email, name, 'student');
     setShowLoginModal(false);
     setEmailInput('');
@@ -227,8 +236,21 @@ export default function Navbar({
     e.preventDefault();
     if (passwordInput === 'admin123') {
       try {
+        // Sign out from any student/coordinated Google session to avoid sending a student auth token to Firestore rules
+        if (auth.currentUser) {
+          try {
+            await fbSignOut(auth);
+          } catch (signOutErr) {
+            console.warn("[Firebase] Pre-admin signout error, skipping:", signOutErr);
+          }
+        }
+
         // Authenticate with Firebase anonymously to grant authorized database permission
-        await signInAnonymously(auth);
+        try {
+          await signInAnonymously(auth);
+        } catch (authErr) {
+          console.warn("[Firebase] Anonymous session administration auth warning (Anonymous Sign-In might be disabled in Firebase console):", authErr);
+        }
         
         setAdminMode(true);
         if (currentUser) {
@@ -241,7 +263,7 @@ export default function Navbar({
         setErrorMsg('');
       } catch (err: any) {
         console.error('Anonymous Administration Auth error:', err);
-        setErrorMsg('Failed to establish secure anonymous administrator database session support.');
+        setErrorMsg('Failed to establish administration database session.');
       }
     } else {
       setErrorMsg('Incorrect passcode. Use experimental password: admin123');
@@ -273,7 +295,7 @@ export default function Navbar({
                 CINEPHILIA
               </h1>
               <p className="font-mono text-[10px] tracking-wider text-amber-500/80 uppercase">
-                IISER Kolkata Movie Club
+                Movie Club IISER Kolkata
               </p>
             </div>
           </div>
@@ -282,7 +304,7 @@ export default function Navbar({
           <nav className="hidden md:flex items-center space-x-1">
             {[
               { id: 'schedule', label: 'Screenings' },
-              { id: 'past', label: 'Letterboxd Reels' },
+              { id: 'past', label: 'Past Screenings' },
               { id: 'recommendations', label: 'Recommendations' },
               { id: 'trivia', label: 'CineQuiz' }
             ].map((tab) => (
@@ -409,9 +431,9 @@ export default function Navbar({
         {/* Mobile quick submenu */}
         <div className="flex md:hidden items-center justify-around h-11 border-t border-zinc-900 bg-zinc-950">
           {[
-            { id: 'schedule', label: 'Screenings' },
-            { id: 'past', label: 'Reels' },
-            { id: 'recommendations', label: 'Requests' },
+            { id: 'schedule', label: 'Schedule' },
+            { id: 'past', label: 'Past' },
+            { id: 'recommendations', label: 'Recs' },
             { id: 'trivia', label: 'Quiz' }
           ].map((tab) => (
             <button

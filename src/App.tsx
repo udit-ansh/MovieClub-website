@@ -7,7 +7,7 @@ import {
 import { Screening, PastMovie, Recommendation, User, UserReview } from './types';
 import { initialScreenings, initialPastMovies, initialRecommendations } from './initialData';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { 
   collection, 
   onSnapshot, 
@@ -47,6 +47,12 @@ export default function App() {
       setCurrentUser(parsed);
       if (parsed.role === 'admin') {
         setAdminMode(true);
+      }
+      // Guarantee a real Firebase Auth session is active
+      if (!auth.currentUser) {
+        signInAnonymously(auth).catch(err => {
+          console.warn("[Firebase] Anonymous session auto-init failed:", err);
+        });
       }
     }
   }, []);
@@ -398,7 +404,7 @@ export default function App() {
           <div className="max-w-3xl">
             <div className="inline-flex items-center space-x-1.5 bg-zinc-900/80 border border-zinc-800 px-3 py-1 rounded-full text-xs font-mono text-amber-500 mb-6">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping"></span>
-              <span>IISER KOLKATA • CINEMATIC ARTS SOCIETY</span>
+              <span>MOVIE CLUB • IISER KOLKATA</span>
             </div>
 
             <h2 className="font-serif text-4xl sm:text-6xl font-extrabold text-zinc-100 tracking-tight leading-[1.1] animate-glow">

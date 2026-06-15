@@ -135,11 +135,11 @@ export default function ScreeningSchedule({
       if (data.posterUrl) setPosterUrl(data.posterUrl);
       if (data.backdropUrl) setBackdropUrl(data.backdropUrl);
       
-      setFeedbackMsg(`✨ AI successfully populated details for "${data.title}"!`);
+      setFeedbackMsg(`✨ Found details for "${data.title}"!`);
       setTimeout(() => setFeedbackMsg(''), 4500);
     } catch (err: any) {
       console.error(err);
-      setAiError(err.message || 'Error occurred during AI fetching.');
+      setAiError(err.message || 'Error occurred while looking up movie details.');
     } finally {
       setIsAiLoading(false);
     }
@@ -185,16 +185,16 @@ export default function ScreeningSchedule({
             if (detail.backdropUrl) setBackdropUrl(detail.backdropUrl);
             if (detail.description) setDescription(detail.description);
             
-            setFeedbackMsg(`✨ Resolved & autofilled properties for "${detail.title}"!`);
+            setFeedbackMsg(`✨ Auto-filled details for "${detail.title}"!`);
             setTimeout(() => setFeedbackMsg(''), 4500);
             setLetterboxdInput(''); // empty input on success
           }
         } else {
-          setAiError('Could not auto-scrape this link. Please enter manually.');
+          setAiError('Could not load details from this link. Please enter details manually.');
         }
       } catch (err: any) {
         console.warn("Autofill from link failed:", err);
-        setAiError('Could not auto-scrape this link. Please enter manually.');
+        setAiError('Could not load details from this link. Please enter details manually.');
       } finally {
         setIsAiLoading(false);
       }
@@ -678,9 +678,9 @@ export default function ScreeningSchedule({
               <div className="bg-zinc-900/80 border border-zinc-800 p-4 rounded-xl space-y-3">
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="text-amber-500 flex items-center gap-1.5 px-1.5 py-0.5 bg-amber-500/5 rounded border border-amber-500/10 font-bold uppercase tracking-wider text-[10px]">
-                    🍿 SMART CINEMA AUTOFILL & SEARCH
+                    🍿 QUICK MOVIE SEARCH & AUTO-FILL
                   </span>
-                  <span className="text-zinc-550 text-[10px]/none">Real-time API suggestions</span>
+                  <span className="text-zinc-550 text-[10px]/none">Search by movie name</span>
                 </div>
                 
                 <div className="relative">
@@ -728,7 +728,7 @@ export default function ScreeningSchedule({
                 </div>
 
                 <p className="text-[10px] text-zinc-500 leading-normal leading-relaxed">
-                  💡 Hint: Paste a full Letterboxd film list page URL, details link, or any IMDb movie title URL (e.g. <span className="text-zinc-400">imdb.com/title/tt8291224/</span>), and our full-stack model will immediately scrape the metadata and import everything!
+                  💡 Hint: Search for a movie by name or paste an IMDb / Letterboxd link above, and we will automatically fill in the film details for you!
                 </p>
 
                 {selectedMovie && (
@@ -742,7 +742,7 @@ export default function ScreeningSchedule({
                       }}
                     />
                     <div className="text-xs space-y-0.5 min-w-0 flex-1">
-                      <div className="font-bold text-amber-500 font-mono text-[9px] uppercase tracking-wider">Active Import Profile</div>
+                      <div className="font-bold text-amber-500 font-mono text-[9px] uppercase tracking-wider">Selected Movie Details</div>
                       <div className="font-serif font-bold text-zinc-100 leading-tight truncate">{selectedMovie.title} ({selectedMovie.year})</div>
                       <div className="text-[11px] text-zinc-400 truncate">Director: {selectedMovie.director} • {selectedMovie.runtime}</div>
                       <div className="text-[10px] text-zinc-500 font-mono max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{selectedMovie.genre.join(', ')}</div>
@@ -765,7 +765,7 @@ export default function ScreeningSchedule({
                           : 'bg-zinc-900 border-zinc-800 text-zinc-500 cursor-not-allowed'
                       }`}
                     >
-                      {isAiLoading ? '⌛ FETCHING...' : '✨ AUTOFILL VIA AI'}
+                      {isAiLoading ? '⌛ AUTOFILLING...' : '✨ QUICK AUTO-FILL'}
                     </button>
                   </div>
                   <input
