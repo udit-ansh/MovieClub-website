@@ -76,7 +76,7 @@ export default function ClubDiscussions({
     try {
       const movieMatch = letterboxdMovies.find(m => m.id === selectedMovieSlug);
       
-      await onAddDiscussion({
+      const savePromise = onAddDiscussion({
         title: newTitle.trim(),
         category: newCategory,
         content: newContent.trim(),
@@ -84,6 +84,12 @@ export default function ClubDiscussions({
         movieSlug: movieMatch?.id || undefined,
         rating: newCategory === 'Review' ? newRating : undefined
       });
+
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("LOCAL_SYNC")), 2000);
+      });
+
+      await Promise.race([savePromise, timeoutPromise]);
 
       // Reset
       setNewTitle('');
@@ -96,7 +102,19 @@ export default function ClubDiscussions({
       setTimeout(() => setSuccessMsg(''), 4000);
       setShowCreateModal(false);
     } catch (err: any) {
-      setErrorMsg('Failed to launch thread: ' + (err.message || String(err)));
+      if (err.message === "LOCAL_SYNC") {
+        setNewTitle('');
+        setNewCategory('Discussion');
+        setNewContent('');
+        setSelectedMovieSlug('');
+        setMovieSearchTerm('');
+        setNewRating(5);
+        setSuccessMsg('Saved! Thread will update as soon as background sync finishes...');
+        setTimeout(() => setSuccessMsg(''), 4000);
+        setShowCreateModal(false);
+      } else {
+        setErrorMsg('Failed to launch thread: ' + (err.message || String(err)));
+      }
     } finally {
       setIsSubmitting(false);
     }

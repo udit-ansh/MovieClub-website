@@ -36,6 +36,21 @@ const sanitizeDoc = <T extends object>(obj: T): T => {
   return JSON.parse(JSON.stringify(obj));
 };
 
+const isScreeningFullyPast = (dateStr: string, timeStr: string): boolean => {
+  try {
+    const [yr, mo, dy] = dateStr.split('-').map(Number);
+    const [hr, mn] = (timeStr || '18:30').split(':').map(Number);
+    if (isNaN(yr) || isNaN(mo) || isNaN(dy)) return false;
+    // Create local timezone date for the screening start
+    const screeningDateTime = new Date(yr, mo - 1, dy, hr, mn, 0);
+    // Screening is fully past 3 hours after start
+    const archiveThreshold = screeningDateTime.getTime() + (3 * 60 * 60 * 1000);
+    return Date.now() > archiveThreshold;
+  } catch {
+    return false;
+  }
+};
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<string>('schedule');
@@ -47,6 +62,74 @@ export default function App() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>(initialRecommendations);
   const [discussions, setDiscussions] = useState<ClubDiscussion[]>(initialDiscussions);
   const [polls, setPolls] = useState<Poll[]>([]);
+
+  // Filter active/upcoming screenings vs past movies client-side
+  const upcomingScreenings = screenings.filter(s => !isScreeningFullyPast(s.date, s.time));
+
+  // Merge any past screenings into pastMovies client-side
+  const computedPastMovies = [...pastMovies];
+  screenings.forEach(s => {
+    if (isScreeningFullyPast(s.date, s.time)) {
+      const alreadyExists = pastMovies.some(
+        pm => pm.title.toLowerCase() === s.title.toLowerCase() || pm.id === `pm-${s.id}`
+      );
+      if (!alreadyExists) {
+        computedPastMovies.push({
+          id: `pm-${s.id}`,
+          title: s.title,
+          director: s.director || 'Unknown',
+          year: s.year || 2026,
+          screenedDate: s.date,
+          rating: 4.5,
+          letterboxdUrl: `https://letterboxd.com/film/${s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}/`,
+          posterUrl: s.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300',
+          synopsis: s.description || '',
+          genre: s.genre || ['Cinema'],
+          reviews: []
+        });
+      }
+    }
+  });
+
+  // Sort past movies descending by screening date
+  computedPastMovies.sort((a, b) => b.screenedDate.localeCompare(a.screenedDate));
+
+  // Automatic database auto-archive for past screenings when an administrative user is logged in
+  useEffect(() => {
+    if (!adminMode || screenings.length === 0) return;
+
+    const archiveJob = async () => {
+      for (const s of screenings) {
+        if (isScreeningFullyPast(s.date, s.time)) {
+          console.log(`[Auto-Archive] Archive threshold met for "${s.title}". Triggering migration...`);
+          const pastId = `pm-${s.id}`;
+          const newPastMovie: PastMovie = {
+            id: pastId,
+            title: s.title,
+            director: s.director || 'Unknown',
+            year: s.year || 2026,
+            screenedDate: s.date,
+            rating: 4.5,
+            letterboxdUrl: `https://letterboxd.com/film/${s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}/`,
+            posterUrl: s.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300',
+            synopsis: s.description || '',
+            genre: s.genre || ['Cinema'],
+            reviews: []
+          };
+
+          try {
+            await setDoc(doc(db, 'pastMovies', pastId), sanitizeDoc(newPastMovie));
+            await deleteDoc(doc(db, 'screenings', s.id));
+            console.log(`[Auto-Archive] Successfully moved "${s.title}" to database pastMovies.`);
+          } catch (err) {
+            console.warn(`[Auto-Archive] Failed to write past movie / delete screening:`, err);
+          }
+        }
+      }
+    };
+
+    archiveJob();
+  }, [screenings, adminMode]);
 
   // Load session auth from local storage on bootstrap
   useEffect(() => {
@@ -664,7 +747,7 @@ export default function App() {
           >
             {activeTab === 'schedule' && (
               <ScreeningSchedule
-                screenings={screenings}
+                screenings={upcomingScreenings}
                 adminMode={adminMode}
                 onAddScreening={handleAddScreening}
                 onUpdateScreening={handleUpdateScreening}
@@ -675,7 +758,7 @@ export default function App() {
 
             {activeTab === 'past' && (
               <PastScreenings
-                pastMovies={pastMovies}
+                pastMovies={computedPastMovies}
                 onAddReview={handleAddReview}
                 currentUser={currentUser}
               />
