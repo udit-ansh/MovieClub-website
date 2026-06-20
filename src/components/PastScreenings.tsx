@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   Star, MessageSquare, ExternalLink, RefreshCw, Calendar, 
-  ChevronDown, ChevronUp, User, Clock, Send, MessageCircleCode, CheckCircle2 
+  ChevronDown, ChevronUp, User, Clock, Send, MessageCircleCode, CheckCircle2,
+  Edit3, Trash2
 } from 'lucide-react';
 import { PastMovie, UserReview } from '../types';
 import { getPolishedPosterUrl } from '../letterboxdDb';
@@ -10,9 +11,17 @@ interface PastScreeningsProps {
   pastMovies: PastMovie[];
   onAddReview: (movieId: string, review: Omit<UserReview, 'id' | 'createdAt'>) => void;
   currentUser: { email: string; name: string } | null;
+  onUpdateReview?: (movieId: string, reviewId: string, comment: string, rating: number) => Promise<void>;
+  onDeleteReview?: (movieId: string, reviewId: string) => Promise<void>;
 }
 
-export default function PastScreenings({ pastMovies, onAddReview, currentUser }: PastScreeningsProps) {
+export default function PastScreenings({ 
+  pastMovies, 
+  onAddReview, 
+  currentUser,
+  onUpdateReview,
+  onDeleteReview
+}: PastScreeningsProps) {
   const [selectedMovieId, setSelectedMovieId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
@@ -21,6 +30,12 @@ export default function PastScreenings({ pastMovies, onAddReview, currentUser }:
   const [ratingInput, setRatingInput] = useState(5);
   const [commentInput, setCommentInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Editing state for reviews inline
+  const [editingRevId, setEditingRevId] = useState<string | null>(null);
+  const [editRatingInput, setEditRatingInput] = useState(5);
+  const [editCommentInput, setEditCommentInput] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const triggerSync = () => {
     setIsSyncing(true);
@@ -234,28 +249,124 @@ export default function PastScreenings({ pastMovies, onAddReview, currentUser }:
                     {movie.reviews.length === 0 ? (
                       <p className="text-[11px] text-zinc-600 italic">No reviews logged by campus members yet. Be the first to share your post-screening review below!</p>
                     ) : (
-                      movie.reviews.map((rev) => (
-                        <div key={rev.id} className="bg-zinc-900/40 p-3.5 rounded-xl border border-zinc-900/60 space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-zinc-300 flex items-center gap-1">
-                              <User className="h-3 w-3 text-amber-500/80" />
-                              {rev.userName}
-                            </span>
-                            <span className="text-[10px] text-zinc-500 font-mono">
-                              {rev.userEmail.split('@')[0]}
-                            </span>
+                      movie.reviews.map((rev) => {
+                        const isAuthor = currentUser && currentUser.email === rev.userEmail;
+                        const isEditing = editingRevId === rev.id;
+
+                        const handleSaveClick = async () => {
+                          if (!editCommentInput.trim()) return;
+                          setIsUpdating(true);
+                          try {
+                            if (onUpdateReview) {
+                              await onUpdateReview(movie.id, rev.id, editCommentInput, editRatingInput);
+                            }
+                            setEditingRevId(null);
+                          } catch (err) {
+                            console.error(err);
+                          } finally {
+                            setIsUpdating(false);
+                          }
+                        };
+
+                        const handleDeleteClick = async () => {
+                          if (!window.confirm("Are you sure you want to permanently delete your screening review?")) return;
+                          try {
+                            if (onDeleteReview) {
+                              await onDeleteReview(movie.id, rev.id);
+                            }
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        };
+
+                        return (
+                          <div key={rev.id} className="bg-zinc-900/40 p-3.5 rounded-xl border border-zinc-900/60 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-zinc-300 flex items-center gap-1">
+                                <User className="h-3 w-3 text-amber-500/80" />
+                                {rev.userName}
+                              </span>
+                              <div className="flex items-center space-x-1.5">
+                                <span className="text-[10px] text-zinc-500 font-mono">
+                                  {rev.userEmail.split('@')[0]}
+                                </span>
+                                {isAuthor && !isEditing && (
+                                  <div className="flex items-center space-x-1.5 font-mono text-[9px] text-zinc-500 pl-1.5 border-l border-zinc-800">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingRevId(rev.id);
+                                        setEditCommentInput(rev.comment);
+                                        setEditRatingInput(rev.rating);
+                                      }}
+                                      className="hover:text-amber-400 cursor-pointer"
+                                    >
+                                      Edit
+                                    </button>
+                                    <span>•</span>
+                                    <button
+                                      type="button"
+                                      onClick={handleDeleteClick}
+                                      className="hover:text-red-400 cursor-pointer"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center space-x-2 py-0.5">
+                              {isEditing ? (
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-[10px] font-mono text-zinc-400">Rating:</span>
+                                  {renderStars(editRatingInput, true, setEditRatingInput)}
+                                </div>
+                              ) : (
+                                <>
+                                  {renderStars(rev.rating)}
+                                  <span className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                                    {new Date(rev.createdAt).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+
+                            {isEditing ? (
+                              <div className="space-y-2 mt-2">
+                                <textarea
+                                  value={editCommentInput}
+                                  onChange={(e) => setEditCommentInput(e.target.value)}
+                                  rows={2}
+                                  className="w-full text-xs text-zinc-200 bg-zinc-950 border border-zinc-805 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-amber-500/55 font-sans"
+                                />
+                                <div className="flex items-center justify-end space-x-2">
+                                  <button
+                                    type="button"
+                                    disabled={isUpdating}
+                                    onClick={handleSaveClick}
+                                    className="bg-amber-500 hover:bg-amber-600 text-zinc-950 font-bold px-2.5 py-1 rounded text-[10px] uppercase font-mono disabled:opacity-50 cursor-pointer"
+                                  >
+                                    {isUpdating ? 'Saving...' : 'Save'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isUpdating}
+                                    onClick={() => setEditingRevId(null)}
+                                    className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-2.5 py-1 rounded text-[10px] uppercase font-mono disabled:opacity-50 cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-zinc-400 italic">
+                                "{rev.comment}"
+                              </p>
+                            )}
                           </div>
-                          <div className="flex items-center space-x-2 py-0.5">
-                            {renderStars(rev.rating)}
-                            <span className="text-[10px] text-zinc-500 font-mono mt-0.5">
-                              {new Date(rev.createdAt).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}
-                            </span>
-                          </div>
-                          <p className="text-xs text-zinc-400 italic">
-                            "{rev.comment}"
-                          </p>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
 

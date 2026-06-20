@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   MessageSquare, ThumbsUp, Calendar, User, Search, Filter, 
   Plus, ArrowLeft, Star, Trash2, Send, Clapperboard, CheckCircle2, MessageCircle
@@ -14,6 +14,8 @@ interface ClubDiscussionsProps {
   onDeleteDiscussion?: (discussionId: string) => Promise<void>;
   currentUser: UserType | null;
   adminMode: boolean;
+  focusedDiscussionId?: string | null;
+  onSelectDiscussion?: (id: string | null) => void;
 }
 
 export default function ClubDiscussions({
@@ -23,9 +25,24 @@ export default function ClubDiscussions({
   onVoteDiscussion,
   onDeleteDiscussion,
   currentUser,
-  adminMode
+  adminMode,
+  focusedDiscussionId,
+  onSelectDiscussion
 }: ClubDiscussionsProps) {
   const [selectedDiscId, setSelectedDiscId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (focusedDiscussionId) {
+      setSelectedDiscId(focusedDiscussionId);
+    }
+  }, [focusedDiscussionId]);
+
+  const handleSetSelectedDiscId = (id: string | null) => {
+    setSelectedDiscId(id);
+    if (onSelectDiscussion) {
+      onSelectDiscussion(id);
+    }
+  };
   const [showCreateModal, setShowCreateModal] = useState(false);
   
   // Search & Filter
@@ -189,7 +206,7 @@ export default function ClubDiscussions({
           {/* Back button */}
           <button
             onClick={() => {
-              setSelectedDiscId(null);
+              handleSetSelectedDiscId(null);
               setCommentError('');
               setCommentInput('');
             }}
@@ -261,7 +278,7 @@ export default function ClubDiscussions({
                       onClick={async () => {
                         if (window.confirm('Are you strictly sure you want to delete this thread permanently?')) {
                           await onDeleteDiscussion(activeDiscussion.id);
-                          setSelectedDiscId(null);
+                          handleSetSelectedDiscId(null);
                         }
                       }}
                       className="text-xs text-zinc-650 hover:text-red-400 font-mono flex items-center gap-1 transition-colors cursor-pointer"
@@ -489,7 +506,7 @@ export default function ClubDiscussions({
               {filteredDiscussions.map((disc) => (
                 <div
                   key={disc.id}
-                  onClick={() => setSelectedDiscId(disc.id)}
+                  onClick={() => handleSetSelectedDiscId(disc.id)}
                   className="group flex flex-col justify-between rounded-2xl border border-zinc-900 bg-zinc-950 p-5 shadow-lg hover:border-zinc-800 transition-all duration-300 cursor-pointer"
                 >
                   <div className="space-y-3.5">

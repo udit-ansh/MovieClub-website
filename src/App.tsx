@@ -23,6 +23,7 @@ import ScreeningSchedule from './components/ScreeningSchedule';
 import PastScreenings from './components/PastScreenings';
 import Recommendations from './components/Recommendations';
 import ClubDiscussions from './components/ClubDiscussions';
+import UserProfile from './components/UserProfile';
 import PollsSection from './components/PollsSection';
 import { letterboxdMovies } from './letterboxdDb';
 
@@ -54,6 +55,7 @@ const isScreeningFullyPast = (dateStr: string, timeStr: string): boolean => {
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<string>('schedule');
+  const [focusedDiscussionId, setFocusedDiscussionId] = useState<string | null>(null);
   const [adminMode, setAdminMode] = useState<boolean>(false);
 
   // Core schedules, past screenings, recommendations pools with initial local fallback
@@ -513,6 +515,45 @@ export default function App() {
     }
   };
 
+  const handleUpdateReview = async (movieId: string, reviewId: string, updatedComment: string, updatedRating: number) => {
+    const targetMovie = pastMovies.find(m => m.id === movieId);
+    if (!targetMovie) return;
+
+    try {
+      const updatedReviews = targetMovie.reviews.map(r => {
+        if (r.id === reviewId) {
+          return {
+            ...r,
+            comment: updatedComment.trim(),
+            rating: updatedRating,
+            createdAt: new Date().toISOString()
+          };
+        }
+        return r;
+      });
+
+      await updateDoc(doc(db, 'pastMovies', movieId), sanitizeDoc({
+        reviews: updatedReviews
+      }));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `pastMovies/${movieId}`);
+    }
+  };
+
+  const handleDeleteReview = async (movieId: string, reviewId: string) => {
+    const targetMovie = pastMovies.find(m => m.id === movieId);
+    if (!targetMovie) return;
+
+    try {
+      const updatedReviews = targetMovie.reviews.filter(r => r.id !== reviewId);
+      await updateDoc(doc(db, 'pastMovies', movieId), sanitizeDoc({
+        reviews: updatedReviews
+      }));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `pastMovies/${movieId}`);
+    }
+  };
+
   // Student Recommendation Submission Action
   const handleAddRecommendation = async (recData: Omit<Recommendation, 'id' | 'suggestedBy' | 'suggestedByName' | 'suggestedAt' | 'votes'>): Promise<'added' | 'voted' | 'already_voted'> => {
     if (!currentUser) return 'added';
@@ -761,6 +802,8 @@ export default function App() {
                 pastMovies={computedPastMovies}
                 onAddReview={handleAddReview}
                 currentUser={currentUser}
+                onUpdateReview={handleUpdateReview}
+                onDeleteReview={handleDeleteReview}
               />
             )}
 
@@ -773,6 +816,8 @@ export default function App() {
                 onDeleteDiscussion={handleDeleteDiscussion}
                 currentUser={currentUser}
                 adminMode={adminMode}
+                focusedDiscussionId={focusedDiscussionId}
+                onSelectDiscussion={setFocusedDiscussionId}
               />
             )}
 
@@ -793,6 +838,20 @@ export default function App() {
                 polls={polls}
                 currentUser={currentUser}
                 adminMode={adminMode}
+              />
+            )}
+
+            {activeTab === 'profile' && (
+              <UserProfile
+                currentUser={currentUser}
+                pastMovies={computedPastMovies}
+                discussions={discussions}
+                recommendations={recommendations}
+                polls={polls}
+                setActiveTab={setActiveTab}
+                setFocusedDiscussionId={setFocusedDiscussionId}
+                onUpdateReview={handleUpdateReview}
+                onDeleteReview={handleDeleteReview}
               />
             )}
 

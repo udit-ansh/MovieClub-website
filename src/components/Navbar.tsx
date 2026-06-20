@@ -349,7 +349,8 @@ export default function Navbar({
               { id: 'past', label: 'Past Screenings' },
               { id: 'discussions', label: 'Discussions' },
               { id: 'recommendations', label: 'Recommendations' },
-              { id: 'polls', label: 'Polls' }
+              { id: 'polls', label: 'Polls' },
+              ...(currentUser ? [{ id: 'profile', label: 'My Profile' }] : [])
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -450,6 +451,16 @@ export default function Navbar({
                     </p>
                     <button
                       onClick={() => {
+                        setActiveTab('profile');
+                        setShowProfileDropdown(false);
+                      }}
+                      className="w-full flex items-center space-x-2 text-zinc-350 hover:bg-zinc-800 p-1.5 rounded text-xs mb-1 transition-colors cursor-pointer"
+                    >
+                      <UserIcon className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                      <span>My Profile</span>
+                    </button>
+                    <button
+                      onClick={() => {
                         setCustomAvatarUrl(currentUser.photoURL || '');
                         setShowEditProfilePic(true);
                         setShowProfileDropdown(false);
@@ -494,13 +505,14 @@ export default function Navbar({
         </div>
 
         {/* Mobile quick submenu */}
-        <div className="flex md:hidden items-center justify-around h-11 border-t border-zinc-900 bg-zinc-950">
+        <div className="flex md:hidden items-center justify-around h-11 border-t border-zinc-900 bg-zinc-950 overflow-x-auto gap-1 scrollbar-none px-2">
           {[
             { id: 'schedule', label: 'Schedule' },
             { id: 'past', label: 'Past' },
             { id: 'discussions', label: 'Discuss' },
             { id: 'recommendations', label: 'Recs' },
-            { id: 'polls', label: 'Polls' }
+            { id: 'polls', label: 'Polls' },
+            ...(currentUser ? [{ id: 'profile', label: 'Profile' }] : [])
           ].map((tab) => (
             <button
               key={tab.id}
