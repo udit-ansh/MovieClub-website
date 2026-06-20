@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Poll, PollMovieOption, User as AppUser } from '../types';
-import { db } from '../firebase';
+import { db, sanitizeDoc } from '../firebase';
 import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 interface PollsSectionProps {
@@ -158,7 +158,7 @@ export default function PollsSection({
     };
 
     try {
-      await setDoc(doc(db, 'polls', pollId), newPoll);
+      await setDoc(doc(db, 'polls', pollId), sanitizeDoc(newPoll));
       setSuccessMsg('🎉 Survey Poll published to students successfully!');
       setTimeout(() => {
         setSuccessMsg('');

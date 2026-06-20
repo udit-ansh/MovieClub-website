@@ -60,6 +60,10 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
+export const sanitizeDoc = <T extends object>(obj: T): T => {
+  return JSON.parse(JSON.stringify(obj));
+};
+
 // Check initial Firestore connectivity as mandated by the firebase-integration skill instructions
 import { doc, getDocFromServer } from 'firebase/firestore';
 async function testConnection() {

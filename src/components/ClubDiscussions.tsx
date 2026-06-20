@@ -108,15 +108,18 @@ export default function ClubDiscussions({
       setCommentError('You must be signed in with your student email to post comments.');
       return;
     }
-    if (!commentInput.trim()) {
+    const trimmedInput = commentInput.trim();
+    if (!trimmedInput) {
       return;
     }
 
+    const backupInput = commentInput;
+    setCommentInput('');
     setCommentError('');
     try {
-      await onAddComment(discussionId, commentInput.trim());
-      setCommentInput('');
+      await onAddComment(discussionId, trimmedInput);
     } catch (err: any) {
+      setCommentInput(backupInput);
       setCommentError('Failed to post reply.');
     }
   };

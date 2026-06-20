@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Film, User as UserIcon, LogOut, Shield, ShieldCheck, HelpCircle, GraduationCap, Camera, UploadCloud, Image as ImageIcon } from 'lucide-react';
 import { User } from '../types';
 import { auth, googleProvider } from '../firebase';
-import { signInWithPopup, signOut as fbSignOut, signInAnonymously } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, signOut as fbSignOut, signInAnonymously } from 'firebase/auth';
 
 interface NavbarProps {
   currentUser: User | null;
@@ -32,6 +32,7 @@ export default function Navbar({
   const [errorMsg, setErrorMsg] = useState('');
   const [showAdminVerify, setShowAdminVerify] = useState(false);
   const [isGoogleCustom, setIsGoogleCustom] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
 
   // Profile Picture Upload State
   const [showEditProfilePic, setShowEditProfilePic] = useState(false);
@@ -149,7 +150,23 @@ export default function Navbar({
   const handleRealGoogleSignIn = async () => {
     try {
       setErrorMsg('');
-      const result = await signInWithPopup(auth, googleProvider);
+      let result;
+      try {
+        result = await signInWithPopup(auth, googleProvider);
+      } catch (popupErr: any) {
+        console.warn('Google Popup Sign-In blocked/failed. Trying redirect flow...', popupErr);
+        if (
+          popupErr.code === 'auth/popup-blocked' || 
+          popupErr.code === 'auth/operation-not-supported-in-this-environment' ||
+          /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+        ) {
+          setErrorMsg('Popup blocked. Attempting Google Secure Sign-In Redirect...');
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } else {
+          throw popupErr;
+        }
+      }
       const user = result.user;
       const email = user.email ? user.email.toLowerCase() : '';
       const name = user.displayName || 'IISER-K Member';
@@ -183,14 +200,35 @@ export default function Navbar({
       setIsGoogleCustom(false);
     } catch (err: any) {
       console.error('Google Sign-In Error:', err);
-      setErrorMsg(err.message || 'An error occurred during Google Sign-In.');
+      // Give custom friendly help for embedded/sandbox/mobile environments
+      if (err.message && err.message.includes('cross-origin')) {
+        setErrorMsg('Embedded browser error. Please try clicking "Use another Google Account" below or select a Sandbox Simulator account to bypass.');
+      } else {
+        setErrorMsg(err.message || 'An error occurred during Google Sign-In.');
+      }
     }
   };
 
   const handleAdminGoogleSignIn = async () => {
     try {
       setErrorMsg('');
-      const result = await signInWithPopup(auth, googleProvider);
+      let result;
+      try {
+        result = await signInWithPopup(auth, googleProvider);
+      } catch (popupErr: any) {
+        console.warn('Google Admin Popup Sign-In blocked/failed. Trying redirect flow...', popupErr);
+        if (
+          popupErr.code === 'auth/popup-blocked' || 
+          popupErr.code === 'auth/operation-not-supported-in-this-environment' ||
+          /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+        ) {
+          setErrorMsg('Popup blocked. Attempting Google Admin Sign-In Redirect...');
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } else {
+          throw popupErr;
+        }
+      }
       const user = result.user;
       const email = user.email ? user.email.toLowerCase() : '';
       const name = user.displayName || 'Club Coordinator';
@@ -214,7 +252,11 @@ export default function Navbar({
       setErrorMsg('');
     } catch (err: any) {
       console.error('Google Admin Sign-In Error:', err);
-      setErrorMsg(err.message || 'An error occurred during Google Admin Sign-In.');
+      if (err.message && err.message.includes('cross-origin')) {
+        setErrorMsg('Embedded login error. Please use the experimental passcode validation below: admin123');
+      } else {
+        setErrorMsg(err.message || 'An error occurred during Google Admin Sign-In.');
+      }
     }
   };
 
@@ -367,7 +409,10 @@ export default function Navbar({
                     {currentUser.role === 'admin' ? 'Club Coordinator' : 'IISER-K Member'}
                   </p>
                 </div>
-                <div className="relative h-9 w-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-amber-400 font-semibold cursor-pointer group">
+                <div 
+                  onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                  className="relative h-9 w-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-amber-400 font-semibold cursor-pointer group"
+                >
                   {currentUser.photoURL ? (
                     <img 
                       src={currentUser.photoURL} 
@@ -383,8 +428,23 @@ export default function Navbar({
                   )}
                   <div className="absolute right-0 bottom-0 h-2.5 w-2.5 rounded-full bg-green-500 border border-zinc-950"></div>
                   
-                  {/* Hover dropdown simulated */}
-                  <div className="absolute right-0 top-10 bg-zinc-900 border border-zinc-800 rounded-lg py-1.5 px-2 w-48 text-left shadow-xl hidden group-hover:block z-50 animate-fadeIn">
+                  {showProfileDropdown && (
+                    <div 
+                      className="fixed inset-0 z-40 bg-transparent" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowProfileDropdown(false);
+                      }} 
+                    />
+                  )}
+
+                  {/* Hover dropdown simulated plus touch toggle support */}
+                  <div 
+                    onClick={(e) => e.stopPropagation()}
+                    className={`absolute right-0 top-10 bg-zinc-900 border border-zinc-800 rounded-lg py-1.5 px-2 w-48 text-left shadow-xl ${
+                      showProfileDropdown ? 'block' : 'hidden md:group-hover:block'
+                    } z-50 animate-fadeIn`}
+                  >
                     <p className="text-[11px] font-mono text-zinc-400 border-b border-zinc-800 pb-1.5 mb-1.5 truncate">
                       {currentUser.email}
                     </p>
@@ -392,6 +452,7 @@ export default function Navbar({
                       onClick={() => {
                         setCustomAvatarUrl(currentUser.photoURL || '');
                         setShowEditProfilePic(true);
+                        setShowProfileDropdown(false);
                       }}
                       className="w-full flex items-center space-x-2 text-zinc-300 hover:bg-zinc-800 p-1.5 rounded text-xs mb-1 transition-colors"
                     >
@@ -399,7 +460,10 @@ export default function Navbar({
                       <span>Update Avatar</span>
                     </button>
                     <button
-                      onClick={handleSignOut}
+                      onClick={() => {
+                        handleSignOut();
+                        setShowProfileDropdown(false);
+                      }}
                       className="w-full flex items-center space-x-2 text-red-400 hover:bg-zinc-855 p-1.5 rounded text-xs transition-colors"
                     >
                       <LogOut className="h-3.5 w-3.5 shrink-0" />

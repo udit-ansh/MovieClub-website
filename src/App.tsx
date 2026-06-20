@@ -125,7 +125,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [currentUser?.email]);
+  }, []);
 
   // 2. Subscribe to Past Movies
   useEffect(() => {
@@ -181,7 +181,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [currentUser?.email]);
+  }, []);
 
   // 3. Subscribe to Recommendations
   useEffect(() => {
@@ -237,7 +237,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [currentUser?.email]);
+  }, []);
 
   // 4. Subscribe to Discussions & Reviews
   useEffect(() => {
@@ -276,7 +276,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [currentUser?.email]);
+  }, []);
 
   // 5. Subscribe to Selection Polls
   useEffect(() => {
@@ -294,7 +294,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [currentUser?.email]);
+  }, []);
 
   // Listen to real Firebase auth status changes and auto-login if authenticated
   useEffect(() => {
@@ -363,7 +363,7 @@ export default function App() {
       id
     };
     try {
-      await setDoc(doc(db, 'screenings', id), newEntry);
+      await setDoc(doc(db, 'screenings', id), sanitizeDoc(newEntry));
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `screenings/${id}`);
     }
@@ -371,7 +371,7 @@ export default function App() {
 
   const handleUpdateScreening = async (updatedItem: Screening) => {
     try {
-      await setDoc(doc(db, 'screenings', updatedItem.id), updatedItem);
+      await setDoc(doc(db, 'screenings', updatedItem.id), sanitizeDoc(updatedItem));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `screenings/${updatedItem.id}`);
     }
@@ -398,9 +398,9 @@ export default function App() {
 
     try {
       const updatedReviews = [newReview, ...targetMovie.reviews];
-      await updateDoc(doc(db, 'pastMovies', movieId), {
+      await updateDoc(doc(db, 'pastMovies', movieId), sanitizeDoc({
         reviews: updatedReviews
-      });
+      }));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `pastMovies/${movieId}`);
     }
@@ -441,7 +441,7 @@ export default function App() {
     };
 
     try {
-      await setDoc(doc(db, 'recommendations', id), newRec);
+      await setDoc(doc(db, 'recommendations', id), sanitizeDoc(newRec));
       return 'added';
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `recommendations/${id}`);
@@ -451,7 +451,7 @@ export default function App() {
 
   const handleUpdateRecommendation = async (id: string, updatedFields: Partial<Recommendation>) => {
     try {
-      await updateDoc(doc(db, 'recommendations', id), updatedFields);
+      await updateDoc(doc(db, 'recommendations', id), sanitizeDoc(updatedFields));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `recommendations/${id}`);
     }
@@ -479,7 +479,7 @@ export default function App() {
 
     try {
       // 1. Add to pastMovies collection
-      await setDoc(doc(db, 'pastMovies', pastId), newPastMovie);
+      await setDoc(doc(db, 'pastMovies', pastId), sanitizeDoc(newPastMovie));
       // 2. Delete from recommendations collection
       await deleteDoc(doc(db, 'recommendations', rec.id));
     } catch (error) {
