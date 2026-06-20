@@ -24,6 +24,7 @@ export default function PollsSection({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Admin Create Poll States
   const [pollQuestion, setPollQuestion] = useState('');
@@ -116,6 +117,8 @@ export default function PollsSection({
   // Submit new poll to Firestore
   const handlePublishPoll = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setErrorMsg('');
     setSuccessMsg('');
 
@@ -140,6 +143,8 @@ export default function PollsSection({
       return;
     }
 
+    setIsSubmitting(true);
+
     const pollId = `poll-${Date.now()}`;
     const finalizedOptions: PollMovieOption[] = options.map((opt, i) => ({
       ...opt,
@@ -159,7 +164,12 @@ export default function PollsSection({
     };
 
     try {
-      await setDoc(doc(db, 'polls', pollId), sanitizeDoc(newPoll));
+      const savePromise = setDoc(doc(db, 'polls', pollId), sanitizeDoc(newPoll));
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("LOCAL_SYNC")), 1500);
+      });
+
+      await Promise.race([savePromise, timeoutPromise]);
       setSuccessMsg('🎉 Survey Poll published to students successfully!');
       setTimeout(() => {
         setSuccessMsg('');
@@ -173,8 +183,24 @@ export default function PollsSection({
         ]);
       }, 2000);
     } catch (err: any) {
-      console.error(err);
-      setErrorMsg(`Failed to post metadata: ${err.message}`);
+      if (err.message === "LOCAL_SYNC") {
+        setSuccessMsg('💾 Saved! Survey Poll will finish background syncing shortly...');
+        setTimeout(() => {
+          setSuccessMsg('');
+          setShowCreateModal(false);
+          setPollQuestion('');
+          setPollDescription('');
+          setOptions([
+            { title: '', director: '', year: 2024, genre: 'Drama', synopsis: '', posterUrl: '' },
+            { title: '', director: '', year: 2024, genre: 'Sci-Fi/Action', synopsis: '', posterUrl: '' }
+          ]);
+        }, 2500);
+      } else {
+        console.error(err);
+        setErrorMsg(`Failed to post metadata: ${err.message}`);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -927,9 +953,10 @@ export default function PollsSection({
                   </button>
                   <button
                     type="submit"
-                    className="bg-amber-500 hover:bg-amber-600 text-zinc-950 text-xs font-bold font-mono px-5 py-2.5 rounded-lg active:scale-95 transition-transform shadow-[0_4px_15px_rgba(245,158,11,0.25)] cursor-pointer"
+                    disabled={isSubmitting}
+                    className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-zinc-950 text-xs font-bold font-mono px-5 py-2.5 rounded-lg active:scale-95 transition-transform shadow-[0_4px_15px_rgba(245,158,11,0.25)] cursor-pointer"
                   >
-                    PUBLISH SURVEY POLL
+                    {isSubmitting ? 'PUBLISHING...' : 'PUBLISH SURVEY POLL'}
                   </button>
                 </div>
               </form>

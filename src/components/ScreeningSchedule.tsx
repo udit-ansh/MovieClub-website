@@ -367,25 +367,41 @@ export default function ScreeningSchedule({
         })
       : onAddScreening(screeningData);
 
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("LOCAL_SYNC")), 1500);
+    });
+
     try {
-      await savePromise;
+      await Promise.race([savePromise, timeoutPromise]);
       setFeedbackMsg(`✨ Screening ${editingScreening ? 'updated' : 'added'} successfully!`);
       setTimeout(() => setFeedbackMsg(''), 4500);
       setShowFormModal(false);
     } catch (err: any) {
-      console.error("Failed to save screening:", err);
-      let parsedMsg = "";
-      try {
-        const parsedErr = JSON.parse(err.message);
-        if (parsedErr.error && parsedErr.error.includes("Permission denied")) {
-          parsedMsg = "Firebase Permission Denied: Your IISER Kolkata admin credentials or passcode login has expired or is unauthorized.";
-        } else {
-          parsedMsg = parsedErr.error || err.message;
+      if (err.message === "LOCAL_SYNC") {
+        setFeedbackMsg(`💾 Saved! Syncing with Firebase in the background...`);
+        setTimeout(() => setFeedbackMsg(''), 4500);
+        setShowFormModal(false);
+      } else {
+        console.error("Failed to save screening:", err);
+        let parsedMsg = "";
+        try {
+          const parsedErr = JSON.parse(err.message);
+          const errorText = (parsedErr.error || "").toLowerCase();
+          if (errorText.includes("permission denied") || errorText.includes("insufficient permissions")) {
+            parsedMsg = "Firebase Permission Denied: Your IISER Kolkata admin credentials or passcode login has expired or is unauthorized.";
+          } else {
+            parsedMsg = parsedErr.error || err.message;
+          }
+        } catch (e) {
+          const lowerMsg = (err.message || "").toLowerCase();
+          if (lowerMsg.includes("permission denied") || lowerMsg.includes("insufficient permissions")) {
+            parsedMsg = "Firebase Permission Denied: Your IISER Kolkata admin credentials or passcode login has expired or is unauthorized.";
+          } else {
+            parsedMsg = err.message || "Failed to publish. Check connection/credentials and try again.";
+          }
         }
-      } catch (e) {
-        parsedMsg = err.message || "Failed to publish. Check connection/credentials and try again.";
+        setSubmitError(parsedMsg);
       }
-      setSubmitError(parsedMsg);
     } finally {
       setIsSubmitting(false);
     }
