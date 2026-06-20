@@ -15,7 +15,8 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc,
-  writeBatch
+  writeBatch,
+  getDoc
 } from 'firebase/firestore';
 
 import Navbar from './components/Navbar';
@@ -27,11 +28,7 @@ import UserProfile from './components/UserProfile';
 import PollsSection from './components/PollsSection';
 import { letterboxdMovies } from './letterboxdDb';
 
-// Prevents reactive re-seeding triggers when an admin empties the database collections manually
-let screeningsSeedAttempted = false;
-let pastMoviesSeedAttempted = false;
-let recommendationsSeedAttempted = false;
-let discussionsSeedAttempted = false;
+// Use database-level seeding markers to prevent unwanted re-seeding on fresh page load/hard refresh
 
 const sanitizeDoc = <T extends object>(obj: T): T => {
   return JSON.parse(JSON.stringify(obj));
@@ -151,44 +148,73 @@ export default function App() {
     }
   }, []);
 
+  // Unified Database Seeding Check on Startup (using persistent Firestore marker)
+  useEffect(() => {
+    const runBootstrap = async () => {
+      try {
+        const seedMarkerRef = doc(db, 'users', 'db_seeded');
+        const markerSnap = await getDoc(seedMarkerRef);
+        
+        if (!markerSnap.exists()) {
+          console.log('[Firebase] Master seed marker not found. Seeding initial datasets atomically...');
+          const batch = writeBatch(db);
+          
+          // Seed Screenings
+          initialScreenings.forEach((s) => {
+            batch.set(doc(db, 'screenings', s.id), sanitizeDoc(s));
+          });
+          
+          // Seed Past Movies
+          initialPastMovies.forEach((m) => {
+            batch.set(doc(db, 'pastMovies', m.id), sanitizeDoc(m));
+          });
+          
+          // Seed Recommendations
+          initialRecommendations.forEach((r) => {
+            batch.set(doc(db, 'recommendations', r.id), sanitizeDoc(r));
+          });
+          
+          // Seed Discussions
+          initialDiscussions.forEach((d) => {
+            batch.set(doc(db, 'discussions', d.id), sanitizeDoc(d));
+          });
+          
+          // Write Seed status marker
+          batch.set(seedMarkerRef, { seeded: true, seededAt: new Date().toISOString() });
+          
+          await batch.commit();
+          console.log('[Firebase] Master seed database initialized.');
+        } else {
+          console.log('[Firebase] Database already seeded. Direct stream active.');
+        }
+      } catch (err) {
+        console.warn('[Firebase] Master database seeding check bypassed or failed:', err);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      runBootstrap();
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   // Sync / screen datasets in real-time with Firestore onsnapshot
   // 1. Subscribe to Screenings
   useEffect(() => {
     const screeningsCol = collection(db, 'screenings');
-    const unsubscribe = onSnapshot(screeningsCol, async (snapshot) => {
-      if (snapshot.empty) {
-        if (!screeningsSeedAttempted) {
-          screeningsSeedAttempted = true;
-          console.log('[Firebase] Screenings database is newly provisioned. Performing atomic batch seed...');
-          setScreenings(initialScreenings);
-          try {
-            const batch = writeBatch(db);
-            initialScreenings.forEach((s) => {
-              batch.set(doc(db, 'screenings', s.id), s);
-            });
-            await batch.commit();
-            console.log('[Firebase] Screenings successfully seeded atomically.');
-          } catch (e) {
-            console.warn('[Firebase] Atomic seeding of screenings failed:', e);
-          }
-        } else {
-          // If the admin purposely deleted all screenings, just render an empty list instead of re-importing defaults!
-          console.log('[Firebase] Screenings collection manually emptied by administrator.');
-          setScreenings([]);
-        }
-      } else {
-        const list: Screening[] = [];
-        snapshot.forEach((docSnap) => {
-          list.push(docSnap.data() as Screening);
-        });
-        // Sort by date/time order
-        list.sort((a, b) => {
-          const dateTimeA = `${a.date}T${a.time}`;
-          const dateTimeB = `${b.date}T${b.time}`;
-          return dateTimeA.localeCompare(dateTimeB);
-        });
-        setScreenings(list);
-      }
+    const unsubscribe = onSnapshot(screeningsCol, (snapshot) => {
+      const list: Screening[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push(docSnap.data() as Screening);
+      });
+      // Sort by date/time order
+      list.sort((a, b) => {
+        const dateTimeA = `${a.date}T${a.time}`;
+        const dateTimeB = `${b.date}T${b.time}`;
+        return dateTimeA.localeCompare(dateTimeB);
+      });
+      setScreenings(list);
     }, (error) => {
       const errInfo = {
         error: error instanceof Error ? error.message : String(error),
@@ -207,7 +233,6 @@ export default function App() {
         path: 'screenings'
       };
       console.error('Firestore Error: ', JSON.stringify(errInfo));
-      console.warn('[Firebase] screenings onSnapshot error (handled gracefully):', error);
     });
 
     return () => unsubscribe();
@@ -216,35 +241,14 @@ export default function App() {
   // 2. Subscribe to Past Movies
   useEffect(() => {
     const pastCol = collection(db, 'pastMovies');
-    const unsubscribe = onSnapshot(pastCol, async (snapshot) => {
-      if (snapshot.empty) {
-        if (!pastMoviesSeedAttempted) {
-          pastMoviesSeedAttempted = true;
-          console.log('[Firebase] Past movies database is newly provisioned. Performing atomic batch seed...');
-          setPastMovies(initialPastMovies);
-          try {
-            const batch = writeBatch(db);
-            initialPastMovies.forEach((m) => {
-              batch.set(doc(db, 'pastMovies', m.id), m);
-            });
-            await batch.commit();
-            console.log('[Firebase] Past movies successfully seeded atomically.');
-          } catch (e) {
-            console.warn('[Firebase] Atomic seeding of past movies failed:', e);
-          }
-        } else {
-          console.log('[Firebase] Past Movies collection manually emptied.');
-          setPastMovies([]);
-        }
-      } else {
-        const list: PastMovie[] = [];
-        snapshot.forEach((docSnap) => {
-          list.push(docSnap.data() as PastMovie);
-        });
-        // Sort past movies descending by screening date
-        list.sort((a, b) => b.screenedDate.localeCompare(a.screenedDate));
-        setPastMovies(list);
-      }
+    const unsubscribe = onSnapshot(pastCol, (snapshot) => {
+      const list: PastMovie[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push(docSnap.data() as PastMovie);
+      });
+      // Sort past movies descending by screening date
+      list.sort((a, b) => b.screenedDate.localeCompare(a.screenedDate));
+      setPastMovies(list);
     }, (error) => {
       const errInfo = {
         error: error instanceof Error ? error.message : String(error),
@@ -263,7 +267,6 @@ export default function App() {
         path: 'pastMovies'
       };
       console.error('Firestore Error: ', JSON.stringify(errInfo));
-      console.warn('[Firebase] pastMovies onSnapshot error (handled gracefully):', error);
     });
 
     return () => unsubscribe();
@@ -272,35 +275,14 @@ export default function App() {
   // 3. Subscribe to Recommendations
   useEffect(() => {
     const recsCol = collection(db, 'recommendations');
-    const unsubscribe = onSnapshot(recsCol, async (snapshot) => {
-      if (snapshot.empty) {
-        if (!recommendationsSeedAttempted) {
-          recommendationsSeedAttempted = true;
-          console.log('[Firebase] Recommendations database is newly provisioned. Performing atomic batch seed...');
-          setRecommendations(initialRecommendations);
-          try {
-            const batch = writeBatch(db);
-            initialRecommendations.forEach((r) => {
-              batch.set(doc(db, 'recommendations', r.id), r);
-            });
-            await batch.commit();
-            console.log('[Firebase] Recommendations successfully seeded atomically.');
-          } catch (e) {
-            console.warn('[Firebase] Atomic seeding of recommendations failed:', e);
-          }
-        } else {
-          console.log('[Firebase] Recommendations collection manually emptied.');
-          setRecommendations([]);
-        }
-      } else {
-        const list: Recommendation[] = [];
-        snapshot.forEach((docSnap) => {
-          list.push(docSnap.data() as Recommendation);
-        });
-        // Sort by proposed date descending
-        list.sort((a, b) => b.suggestedAt.localeCompare(a.suggestedAt));
-        setRecommendations(list);
-      }
+    const unsubscribe = onSnapshot(recsCol, (snapshot) => {
+      const list: Recommendation[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push(docSnap.data() as Recommendation);
+      });
+      // Sort by proposed date descending
+      list.sort((a, b) => b.suggestedAt.localeCompare(a.suggestedAt));
+      setRecommendations(list);
     }, (error) => {
       const errInfo = {
         error: error instanceof Error ? error.message : String(error),
@@ -319,7 +301,6 @@ export default function App() {
         path: 'recommendations'
       };
       console.error('Firestore Error: ', JSON.stringify(errInfo));
-      console.warn('[Firebase] recommendations onSnapshot error (handled gracefully):', error);
     });
 
     return () => unsubscribe();
@@ -328,35 +309,14 @@ export default function App() {
   // 4. Subscribe to Discussions & Reviews
   useEffect(() => {
     const discussionsCol = collection(db, 'discussions');
-    const unsubscribe = onSnapshot(discussionsCol, async (snapshot) => {
-      if (snapshot.empty) {
-        if (!discussionsSeedAttempted) {
-          discussionsSeedAttempted = true;
-          console.log('[Firebase] Discussions database is newly provisioned. Setting up initial entries...');
-          setDiscussions(initialDiscussions);
-          try {
-            const batch = writeBatch(db);
-            initialDiscussions.forEach((d) => {
-              batch.set(doc(db, 'discussions', d.id), d);
-            });
-            await batch.commit();
-            console.log('[Firebase] Discussions successfully seeded atomically.');
-          } catch (e) {
-            console.warn('[Firebase] Atomic seeding of discussions failed:', e);
-          }
-        } else {
-          console.log('[Firebase] Discussions collection manually emptied.');
-          setDiscussions([]);
-        }
-      } else {
-        const list: ClubDiscussion[] = [];
-        snapshot.forEach((docSnap) => {
-          list.push(docSnap.data() as ClubDiscussion);
-        });
-        // Sort by createdAt descending
-        list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        setDiscussions(list);
-      }
+    const unsubscribe = onSnapshot(discussionsCol, (snapshot) => {
+      const list: ClubDiscussion[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push(docSnap.data() as ClubDiscussion);
+      });
+      // Sort by createdAt descending
+      list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      setDiscussions(list);
     }, (error) => {
       console.warn('[Firebase] Discussions onSnapshot error (handled gracefully):', error);
     });
