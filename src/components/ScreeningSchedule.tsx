@@ -7,6 +7,7 @@ import { motion } from 'motion/react';
 import { Screening } from '../types';
 import { letterboxdMovies, LetterboxdMovie, findMovieByUrlOrSlug, parseLetterboxdUrlToMovie, getPolishedPosterUrl } from '../letterboxdDb';
 import { compressAndResizeImage } from '../utils/imageCompressor';
+import MovieClubLogo from './MovieClubLogo';
 
 interface ScreeningScheduleProps {
   screenings: Screening[];
@@ -446,24 +447,29 @@ export default function ScreeningSchedule({
       )}
 
       {/* Header Info */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between border-b border-zinc-900 pb-6 gap-4">
-        <div>
-          <span className="text-amber-500 font-mono text-xs uppercase tracking-widest font-semibold flex items-center gap-1.5">
-            <Sparkles className="h-3.5 w-3.5" /> Upcoming Screenings
-          </span>
-          <h2 className="font-serif text-3xl font-bold text-zinc-100 tracking-tight sm:text-4xl mt-1">
-            Now Screening
-          </h2>
-          <p className="text-sm text-zinc-400 mt-2 max-w-2xl leading-relaxed">
-            The Movie Club brings specialized film curator choices to IISER Kolkata. Screenings are open to all students, faculties, fellowship researchers, and staff. Join us for discussion sessions after each show!
-          </p>
+      <div className="flex flex-col md:flex-row md:items-start justify-between border-b border-zinc-900 pb-6 gap-6">
+        <div className="flex flex-col sm:flex-row gap-5 items-start">
+          <div className="bg-zinc-900 ring-1 ring-zinc-800 p-2.5 rounded-2xl shrink-0">
+            <MovieClubLogo className="h-16 w-16" />
+          </div>
+          <div>
+            <span className="text-amber-500 font-mono text-xs uppercase tracking-widest font-semibold flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5" /> Upcoming Screenings
+            </span>
+            <h2 className="font-serif text-3xl font-bold text-zinc-100 tracking-tight sm:text-4xl mt-1">
+              Now Screening
+            </h2>
+            <p className="text-sm text-zinc-400 mt-2 max-w-2xl leading-relaxed">
+              The Movie Club brings specialized film curator choices to IISER Kolkata. Screenings are open to all students, faculties, fellowship researchers, and staff. Join us for discussion sessions after each show!
+            </p>
+          </div>
         </div>
         
         {adminMode && (
           <button
             onClick={openAddForm}
             id="btn-add-screening"
-            className="flex items-center space-x-2 bg-amber-500 hover:bg-amber-600 text-zinc-950 px-5 py-2.5 rounded-xl font-bold text-sm transition-transform hover:scale-102 shadow-lg shadow-amber-500/15 cursor-pointer self-start md:self-auto"
+            className="flex items-center space-x-2 bg-amber-500 hover:bg-amber-600 text-zinc-950 px-5 py-2.5 rounded-xl font-bold text-sm transition-transform hover:scale-102 shadow-lg shadow-amber-500/15 cursor-pointer self-start md:self-auto shrink-0 md:mt-4"
           >
             <Plus className="h-4.5 w-4.5" />
             <span>Add Screening</span>

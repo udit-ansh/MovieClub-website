@@ -15,6 +15,8 @@ interface PastScreeningsProps {
   onDeleteReview?: (movieId: string, reviewId: string) => Promise<void>;
   adminMode?: boolean;
   onImportPastMovies?: (movies: Omit<PastMovie, 'reviews'>[]) => Promise<void>;
+  onUpdatePastMovie?: (movie: PastMovie) => Promise<void>;
+  onDeletePastMovie?: (movieId: string) => Promise<void>;
 }
 
 export default function PastScreenings({ 
@@ -24,7 +26,9 @@ export default function PastScreenings({
   onUpdateReview,
   onDeleteReview,
   adminMode = false,
-  onImportPastMovies
+  onImportPastMovies,
+  onUpdatePastMovie,
+  onDeletePastMovie
 }: PastScreeningsProps) {
   const [selectedMovieId, setSelectedMovieId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -51,6 +55,20 @@ export default function PastScreenings({
   const [syncStatusMsg, setSyncStatusMsg] = useState('');
   const [syncError, setSyncError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+
+  // New States for Editing Past Movie (Administrators)
+  const [editingMovie, setEditingMovie] = useState<PastMovie | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDirector, setEditDirector] = useState('');
+  const [editYear, setEditYear] = useState(2025);
+  const [editScreenedDate, setEditScreenedDate] = useState('');
+  const [editPosterUrl, setEditPosterUrl] = useState('');
+  const [editSynopsis, setEditSynopsis] = useState('');
+  const [editGenreInput, setEditGenreInput] = useState('');
+  const [editLetterboxdUrl, setEditLetterboxdUrl] = useState('');
+  const [isSavingMovie, setIsSavingMovie] = useState(false);
+  const [movieErrorMsg, setMovieErrorMsg] = useState('');
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
 
   const triggerSync = async () => {
     if (!adminMode) {
@@ -200,6 +218,89 @@ export default function PastScreenings({
     );
   };
 
+  const handleStartEditPastMovie = (movie: PastMovie) => {
+    setEditingMovie(movie);
+    setEditTitle(movie.title);
+    setEditDirector(movie.director);
+    setEditYear(movie.year);
+    setEditScreenedDate(movie.screenedDate || '');
+    setEditPosterUrl(movie.posterUrl || '');
+    setEditSynopsis(movie.synopsis || '');
+    setEditGenreInput(movie.genre ? movie.genre.join(', ') : '');
+    setEditLetterboxdUrl(movie.letterboxdUrl || '');
+    setMovieErrorMsg('');
+    setSaveSuccessMsg('');
+  };
+
+  const handleSavePastMovie = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMovie) return;
+    
+    if (!editTitle.trim()) {
+      setMovieErrorMsg('Title is required.');
+      return;
+    }
+    if (!editDirector.trim()) {
+      setMovieErrorMsg('Director is required.');
+      return;
+    }
+    if (!editScreenedDate.trim()) {
+      setMovieErrorMsg('Screened Date is required.');
+      return;
+    }
+
+    setIsSavingMovie(true);
+    setMovieErrorMsg('');
+    setSaveSuccessMsg('');
+
+    try {
+      const parsedGenres = editGenreInput
+        ? editGenreInput.split(',').map((g) => g.trim()).filter((g) => g.length > 0)
+        : [];
+
+      const updatedMovie: PastMovie = {
+        ...editingMovie,
+        title: editTitle.trim(),
+        director: editDirector.trim(),
+        year: Number(editYear) || 2025,
+        screenedDate: editScreenedDate.trim(),
+        posterUrl: editPosterUrl.trim(),
+        synopsis: editSynopsis.trim(),
+        genre: parsedGenres,
+        letterboxdUrl: editLetterboxdUrl.trim(),
+      };
+
+      if (onUpdatePastMovie) {
+        await onUpdatePastMovie(updatedMovie);
+        setSaveSuccessMsg('Successfully updated past movie screening!');
+        setTimeout(() => {
+          setEditingMovie(null);
+          setSaveSuccessMsg('');
+        }, 1500);
+      }
+    } catch (err: any) {
+      console.error('Update past movie failed:', err);
+      setMovieErrorMsg(err.message || 'Failed to update past movie screening.');
+    } finally {
+      setIsSavingMovie(false);
+    }
+  };
+
+  const handleDeletePastMovieClick = async (movie: PastMovie) => {
+    if (!window.confirm(`Are you absolutely sure you want to permanently delete "${movie.title}" from the past screenings database?\nThis will ALSO remove all corresponding student reviews!`)) {
+      return;
+    }
+
+    try {
+      if (onDeletePastMovie) {
+        await onDeletePastMovie(movie.id);
+      }
+    } catch (err: any) {
+      console.error('Delete past movie failed:', err);
+      alert(`Delete failed: ${err.message || 'Permission denied or error.'}`);
+    }
+  };
+
   return (
     <div className="space-y-10">
       {/* Header and Sync Actions */}
@@ -296,9 +397,31 @@ export default function PastScreenings({
                 {/* Main details */}
                 <div className="flex-1 flex flex-col justify-between">
                   <div>
-                    <span className="text-[10px] uppercase font-mono font-bold text-amber-500/80 bg-amber-500/5 border border-amber-500/10 px-2 py-0.5 rounded-md">
-                      Screened on {movie.screenedDate}
-                    </span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-mono font-bold text-amber-500/80 bg-amber-500/5 border border-amber-500/10 px-2 py-0.5 rounded-md">
+                        Screened on {movie.screenedDate}
+                      </span>
+                      {adminMode && (
+                        <div className="flex items-center space-x-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditPastMovie(movie)}
+                            className="p-1.5 text-zinc-400 hover:text-amber-500 hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Screening Details"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePastMovieClick(movie)}
+                            className="p-1.5 text-zinc-400 hover:text-red-450 hover:bg-zinc-900 rounded-lg transition-colors cursor-pointer"
+                            title="Delete Past Screening"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     
                     <h3 className="font-serif text-lg font-bold text-zinc-100 tracking-tight mt-2 line-clamp-1">
                       {movie.title} <span className="text-zinc-500 font-normal">({movie.year})</span>
@@ -729,6 +852,190 @@ export default function PastScreenings({
                   )}
                 </button>
               </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Edit Movie Dialog Modal for Admins */}
+      {editingMovie && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[99]" id="edit-past-movie-modal">
+          <div className="fixed inset-0 flex items-center justify-center p-4">
+            <div className="bg-zinc-950 border border-zinc-900 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+              
+              {/* Modal Header */}
+              <div className="p-6 border-b border-zinc-900 flex justify-between items-center bg-zinc-950">
+                <div className="flex items-center space-x-3">
+                  <div className="h-9 w-9 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-400 font-bold border border-amber-500/20">
+                    <Edit3 className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-zinc-100 font-mono flex items-center gap-1.5 uppercase tracking-wide">
+                      Edit Screening Details
+                    </h3>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Modify fields or sync assets for "{editingMovie.title}"
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setEditingMovie(null)}
+                  className="text-zinc-500 hover:text-zinc-200 transition-colors p-1.5 bg-zinc-900/50 hover:bg-zinc-900 rounded-lg cursor-pointer transition-all duration-150"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Modal Body / Form */}
+              <form onSubmit={handleSavePastMovie} className="flex flex-col flex-1 overflow-hidden">
+                <div className="p-6 overflow-y-auto space-y-4 flex-1">
+                  
+                  {movieErrorMsg && (
+                    <div className="p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3 text-red-500 text-xs">
+                      <AlertCircle className="h-4.5 w-4.5 shrink-0" />
+                      <span>{movieErrorMsg}</span>
+                    </div>
+                  )}
+
+                  {saveSuccessMsg && (
+                    <div className="p-3.5 bg-green-500/10 border border-green-500/20 rounded-xl flex items-start gap-3 text-green-400 text-xs">
+                      <CheckCircle2 className="h-4.5 w-4.5 shrink-0 animate-bounce" />
+                      <span>{saveSuccessMsg}</span>
+                    </div>
+                  )}
+
+                  {/* Fields Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-mono font-semibold tracking-wider text-zinc-400 mb-1.5 uppercase">
+                        Movie Title
+                      </label>
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className="w-full bg-zinc-900 text-zinc-100 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs font-mono focus:outline-none focus:border-amber-500/50 transition-colors"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-mono font-semibold tracking-wider text-zinc-400 mb-1.5 uppercase">
+                        Director Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editDirector}
+                        onChange={(e) => setEditDirector(e.target.value)}
+                        className="w-full bg-zinc-900 text-zinc-100 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs font-mono focus:outline-none focus:border-amber-500/50 transition-colors"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-mono font-semibold tracking-wider text-zinc-400 mb-1.5 uppercase">
+                        Release Year
+                      </label>
+                      <input
+                        type="number"
+                        value={editYear}
+                        onChange={(e) => setEditYear(Number(e.target.value))}
+                        className="w-full bg-zinc-900 text-zinc-100 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs font-mono focus:outline-none focus:border-amber-500/50 transition-colors"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-mono font-semibold tracking-wider text-zinc-400 mb-1.5 uppercase">
+                        Screened Date (YYYY-MM-DD)
+                      </label>
+                      <input
+                        type="text"
+                        value={editScreenedDate}
+                        onChange={(e) => setEditScreenedDate(e.target.value)}
+                        placeholder="e.g. 2026-06-18"
+                        className="w-full bg-zinc-900 text-zinc-100 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs font-mono focus:outline-none focus:border-amber-500/50 transition-colors"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-mono font-semibold tracking-wider text-zinc-400 mb-1.5 uppercase">
+                      Genres (comma separated)
+                    </label>
+                    <input
+                      type="text"
+                      value={editGenreInput}
+                      onChange={(e) => setEditGenreInput(e.target.value)}
+                      placeholder="e.g. Drama, Thriller, Sci-Fi"
+                      className="w-full bg-zinc-900 text-zinc-100 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs font-mono focus:outline-none focus:border-amber-500/50 transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-mono font-semibold tracking-wider text-zinc-400 mb-1.5 uppercase">
+                      Poster Image URL
+                    </label>
+                    <input
+                      type="url"
+                      value={editPosterUrl}
+                      onChange={(e) => setEditPosterUrl(e.target.value)}
+                      className="w-full bg-zinc-900 text-zinc-100 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs font-mono focus:outline-none focus:border-amber-500/50 transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-mono font-semibold tracking-wider text-zinc-400 mb-1.5 uppercase">
+                      Letterboxd Link
+                    </label>
+                    <input
+                      type="url"
+                      value={editLetterboxdUrl}
+                      onChange={(e) => setEditLetterboxdUrl(e.target.value)}
+                      className="w-full bg-zinc-900 text-zinc-100 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs font-mono focus:outline-none focus:border-amber-500/50 transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-mono font-semibold tracking-wider text-zinc-400 mb-1.5 uppercase">
+                      Movie Synopsis
+                    </label>
+                    <textarea
+                      value={editSynopsis}
+                      onChange={(e) => setEditSynopsis(e.target.value)}
+                      rows={3}
+                      className="w-full bg-zinc-900 text-zinc-100 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs font-mono focus:outline-none focus:border-amber-500/50 transition-colors resize-none"
+                    />
+                  </div>
+
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-4 border-t border-zinc-900 bg-zinc-950 flex justify-between gap-3 px-6 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setEditingMovie(null)}
+                    className="px-4 py-2 border border-zinc-850 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-mono transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingMovie}
+                    className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-zinc-950 px-5 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center space-x-1 shrink-0 cursor-pointer"
+                  >
+                    {isSavingMovie ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <span>Save Changes</span>
+                    )}
+                  </button>
+                </div>
+              </form>
 
             </div>
           </div>

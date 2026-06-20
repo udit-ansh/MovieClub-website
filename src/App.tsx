@@ -618,6 +618,24 @@ export default function App() {
     }
   };
 
+  const handleUpdatePastMovie = async (updatedMovie: PastMovie) => {
+    try {
+      await setDoc(doc(db, 'pastMovies', updatedMovie.id), sanitizeDoc(updatedMovie));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `pastMovies/${updatedMovie.id}`);
+      throw error;
+    }
+  };
+
+  const handleDeletePastMovie = async (movieId: string) => {
+    try {
+      await deleteDoc(doc(db, 'pastMovies', movieId));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `pastMovies/${movieId}`);
+      throw error;
+    }
+  };
+
   // Student Recommendation Submission Action
   const handleAddRecommendation = async (recData: Omit<Recommendation, 'id' | 'suggestedBy' | 'suggestedByName' | 'suggestedAt' | 'votes'>): Promise<'added' | 'voted' | 'already_voted'> => {
     if (!currentUser) return 'added';
@@ -870,6 +888,8 @@ export default function App() {
                 onDeleteReview={handleDeleteReview}
                 adminMode={adminMode}
                 onImportPastMovies={handleImportPastMovies}
+                onUpdatePastMovie={handleUpdatePastMovie}
+                onDeletePastMovie={handleDeletePastMovie}
               />
             )}
 

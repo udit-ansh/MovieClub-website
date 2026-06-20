@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Film, User as UserIcon, LogOut, Shield, ShieldCheck, HelpCircle, GraduationCap, Camera, UploadCloud, Image as ImageIcon } from 'lucide-react';
 import { User } from '../types';
 import { auth, googleProvider } from '../firebase';
+import MovieClubLogo from './MovieClubLogo';
 import { signInWithPopup, signInWithRedirect, signOut as fbSignOut, signInAnonymously } from 'firebase/auth';
 
 interface NavbarProps {
@@ -328,9 +329,9 @@ export default function Navbar({
         <div className="mx-auto flex max-w-7xl h-20 items-center justify-between px-4 sm:px-6 lg:px-8">
           {/* Logo Brand */}
           <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab('schedule')}>
-            <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500 ring-1 ring-amber-500/30">
-              <Film className="h-6 w-6" id="logo-icon" />
-              <div className="absolute -top-1 -right-1 flex h-3 w-3 rounded-full bg-amber-500 animate-pulse"></div>
+            <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-900 ring-1 ring-zinc-800 p-0.5 overflow-hidden">
+              <MovieClubLogo className="h-11 w-11" />
+              <div className="absolute top-0 right-0 flex h-2 w-2 rounded-full bg-amber-500 animate-pulse"></div>
             </div>
             <div>
               <h1 className="font-serif text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-zinc-100 via-amber-200 to-amber-400 sm:text-xl drop-shadow-[0_2px_8px_rgba(245,158,11,0.2)] uppercase">
