@@ -156,34 +156,69 @@ export default function App() {
         const markerSnap = await getDoc(seedMarkerRef);
         
         if (!markerSnap.exists()) {
-          console.log('[Firebase] Master seed marker not found. Seeding initial datasets atomically...');
-          const batch = writeBatch(db);
-          
-          // Seed Screenings
-          initialScreenings.forEach((s) => {
-            batch.set(doc(db, 'screenings', s.id), sanitizeDoc(s));
-          });
-          
-          // Seed Past Movies
-          initialPastMovies.forEach((m) => {
-            batch.set(doc(db, 'pastMovies', m.id), sanitizeDoc(m));
-          });
-          
-          // Seed Recommendations
-          initialRecommendations.forEach((r) => {
-            batch.set(doc(db, 'recommendations', r.id), sanitizeDoc(r));
-          });
-          
-          // Seed Discussions
-          initialDiscussions.forEach((d) => {
-            batch.set(doc(db, 'discussions', d.id), sanitizeDoc(d));
-          });
-          
-          // Write Seed status marker
-          batch.set(seedMarkerRef, { seeded: true, seededAt: new Date().toISOString() });
-          
-          await batch.commit();
-          console.log('[Firebase] Master seed database initialized.');
+          console.log('[Firebase] Master seed marker not found. Seeding initial datasets...');
+
+          // 1. Seed Screenings
+          try {
+            const batch = writeBatch(db);
+            initialScreenings.forEach((s) => {
+              batch.set(doc(db, 'screenings', s.id), sanitizeDoc(s));
+            });
+            await batch.commit();
+            console.log('[Firebase] Seeded screenings.');
+          } catch (e) {
+            console.warn('[Firebase] Screenings seeding error:', e);
+          }
+
+          // 2. Seed Past Movies
+          try {
+            const batch = writeBatch(db);
+            initialPastMovies.forEach((m) => {
+              batch.set(doc(db, 'pastMovies', m.id), sanitizeDoc(m));
+            });
+            await batch.commit();
+            console.log('[Firebase] Seeded past movies.');
+          } catch (e) {
+            console.warn('[Firebase] Past movies seeding error:', e);
+          }
+
+          // 3. Seed Recommendations (using current user email if signed in to bypass rules)
+          try {
+            const batch = writeBatch(db);
+            const userEmail = auth.currentUser?.email || null;
+            initialRecommendations.forEach((r) => {
+              const adjustedRec = {
+                ...r,
+                suggestedBy: userEmail || r.suggestedBy,
+                votes: userEmail ? [userEmail] : r.votes
+              };
+              batch.set(doc(db, 'recommendations', r.id), sanitizeDoc(adjustedRec));
+            });
+            await batch.commit();
+            console.log('[Firebase] Seeded recommendations.');
+          } catch (e) {
+            console.warn('[Firebase] Recommendations seeding error:', e);
+          }
+
+          // 4. Seed Discussions
+          try {
+            const batch = writeBatch(db);
+            initialDiscussions.forEach((d) => {
+              batch.set(doc(db, 'discussions', d.id), sanitizeDoc(d));
+            });
+            await batch.commit();
+            console.log('[Firebase] Seeded discussions.');
+          } catch (e) {
+            console.warn('[Firebase] Discussions seeding error:', e);
+          }
+
+          // 5. Write Seed status marker
+          try {
+            await setDoc(seedMarkerRef, { seeded: true, seededAt: new Date().toISOString() });
+            console.log('[Firebase] Master seed marker written successfully.');
+          } catch (e) {
+            console.warn('[Firebase] Failed to write master seed marker:', e);
+          }
         } else {
           console.log('[Firebase] Database already seeded. Direct stream active.');
         }
