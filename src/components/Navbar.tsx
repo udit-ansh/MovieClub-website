@@ -291,7 +291,7 @@ export default function Navbar({
               <div className="absolute -top-1 -right-1 flex h-3 w-3 rounded-full bg-amber-500 animate-pulse"></div>
             </div>
             <div>
-              <h1 className="font-serif text-lg font-bold tracking-tight text-zinc-100 sm:text-xl">
+              <h1 className="font-serif text-lg font-extrabold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-zinc-100 via-amber-200 to-amber-400 sm:text-xl drop-shadow-[0_2px_8px_rgba(245,158,11,0.2)]">
                 CINEPHILIA
               </h1>
               <p className="font-mono text-[10px] tracking-wider text-amber-500/80 uppercase">
@@ -305,8 +305,8 @@ export default function Navbar({
             {[
               { id: 'schedule', label: 'Screenings' },
               { id: 'past', label: 'Past Screenings' },
-              { id: 'recommendations', label: 'Recommendations' },
-              { id: 'trivia', label: 'CineQuiz' }
+              { id: 'discussions', label: 'Discussions' },
+              { id: 'recommendations', label: 'Recommendations' }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -433,8 +433,8 @@ export default function Navbar({
           {[
             { id: 'schedule', label: 'Schedule' },
             { id: 'past', label: 'Past' },
-            { id: 'recommendations', label: 'Recs' },
-            { id: 'trivia', label: 'Quiz' }
+            { id: 'discussions', label: 'Discuss' },
+            { id: 'recommendations', label: 'Recs' }
           ].map((tab) => (
             <button
               key={tab.id}

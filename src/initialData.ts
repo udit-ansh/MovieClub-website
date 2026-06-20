@@ -1,4 +1,4 @@
-import { Screening, PastMovie, Recommendation, TriviaQuestion } from './types';
+import { Screening, PastMovie, Recommendation, TriviaQuestion, ClubDiscussion } from './types';
 
 // Let's populate with realistic cinematic entries fit for an institute of scientific and creative minds (IISER Kolkata)
 export const initialScreenings: Screening[] = [
@@ -201,3 +201,50 @@ export const triviaQuestions: TriviaQuestion[] = [
     explanation: 'The USSC Discovery One (XD-1) is the nuclear-powered interplanetary spacecraft that carries the crew and the HAL 9000 supercomputer to Jupiter.'
   }
 ];
+
+export const initialDiscussions: ClubDiscussion[] = [
+  {
+    id: 'disc-1',
+    title: "Tarkovsky's Stalker: Exploring the Metaphysical Zone",
+    movieTitle: "Stalker",
+    movieSlug: "stalker",
+    category: "Theory",
+    content: "Yesterday's screening of Stalker left me absolutely speechless. The transition from the sepia-toned 'real world' to the lush, vibrant, septic green of the Zone is one of the most stunning cinematic devices ever conceived.\n\nWhat is the Zone? Is it a physical manifestation of our hidden subconscious, or does it represent something divine that cannot be rationalized? The way the characters (the Writer and the Scientist) represent different wings of human intellect confronting their primary desires is incredibly deep.\n\nI'd love to hear how other IISER students interpret the room at the center of the Zone. What is your 'deepest desire' that you think the Room would manifest?",
+    rating: 5,
+    authorEmail: "aditi.chem@iiserkol.ac.in",
+    authorName: "Aditi Sharma",
+    createdAt: new Date(Date.now() - 3600000 * 24 * 3).toISOString(), // 3 days ago
+    votes: ["soham.bio@iiserkol.ac.in", "arindam.phys@iiserkol.ac.in"],
+    comments: [
+      {
+        id: "c-1",
+        authorEmail: "arindam.phys@iiserkol.ac.in",
+        authorName: "Arindam Ghosh",
+        content: "Excellent analysis, Aditi! As a physics student, I interpret the Zone's unpredictability as a macro-scale quantum system where the act of observation (or intent) directly modifies the physical paths. You cannot cross directly; you have to throw metal nuts wrapped in bandage to test state probability.",
+        createdAt: new Date(Date.now() - 3600000 * 24 * 2.5).toISOString()
+      },
+      {
+        id: "c-2",
+        authorEmail: "soham.bio@iiserkol.ac.in",
+        authorName: "Soham Mukherjee",
+        content: "Adding to that, the Room itself is a mirror. It doesn't give you what you *say* you want, but what your deepest, primal self actually desires (like Porcupine's tragic realization). That's why they ultimately fear entering.",
+        createdAt: new Date(Date.now() - 3600000 * 24 * 2).toISOString()
+      }
+    ]
+  },
+  {
+    id: 'disc-2',
+    title: "Perfect Days: Finding Zen in Komorebi",
+    movieTitle: "Perfect Days",
+    movieSlug: "perfect-days",
+    category: "Review",
+    content: "Wim Wenders has crafted a work of supreme beauty. Perfect Days (2023) is a silent protest against digital overdrive and modern hyper-productivity.\n\nHirayama teaches us the art of mindfulness. The repetition of his chores (cleaning Tokyo public toilets with absolute precision), his devotion to physical cassette music, and his analog photos of komorebi (the sunlight filtering through leaves) are magnificent.\n\nThis film is a warm blanket of comfort for those days when you feel overwhelmed by research papers and exams. Highly recommended!",
+    rating: 5,
+    authorEmail: "soham.bio@iiserkol.ac.in",
+    authorName: "Soham Mukherjee",
+    createdAt: new Date(Date.now() - 3600000 * 24 * 1).toISOString(), // 1 day ago
+    votes: ["aditi.chem@iiserkol.ac.in", "poulami.chem@iiserkol.ac.in"],
+    comments: []
+  }
+];
+

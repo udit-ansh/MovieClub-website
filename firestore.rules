@@ -129,5 +129,26 @@ service cloud.firestore {
 
       allow delete: if isAdmin() || (isIISERUser() && (request.auth == null || !('email' in request.auth.token) || request.auth.token.email == null || existing().suggestedBy == request.auth.token.email));
     }
+
+    // Collection 4: Discussions (Interactive forum postings)
+    match /discussions/{discId} {
+      allow read, get, list: if true;
+      allow create: if isIISERUser() && isValidId(discId) &&
+        incoming().id == discId &&
+        incoming().title is string && incoming().title.size() > 0 &&
+        incoming().content is string && incoming().content.size() > 0 &&
+        incoming().votes is list &&
+        incoming().comments is list;
+
+      allow update: if isIISERUser() && (
+        isAdmin() ||
+        incoming().id == existing().id && (
+          incoming().diff(existing()).affectedKeys().hasAny(['votes', 'comments']) ||
+          (request.auth == null || !('email' in request.auth.token) || request.auth.token.email == null || existing().authorEmail == request.auth.token.email)
+        )
+      );
+
+      allow delete: if isAdmin() || (isIISERUser() && (request.auth == null || !('email' in request.auth.token) || request.auth.token.email == null || existing().authorEmail == request.auth.token.email));
+    }
   }
 }

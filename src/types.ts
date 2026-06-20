@@ -67,3 +67,26 @@ export interface TriviaQuestion {
   answer: number; // Index of correct option
   explanation: string;
 }
+
+export interface DiscussionComment {
+  id: string;
+  authorEmail: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface ClubDiscussion {
+  id: string;
+  title: string;
+  movieTitle?: string;
+  movieSlug?: string;
+  category: 'Review' | 'Discussion' | 'Theory' | 'Question' | 'Event';
+  content: string;
+  rating?: number | null; // For reviews (1-5)
+  authorEmail: string;
+  authorName: string;
+  createdAt: string;
+  votes: string[]; // List of student emails who liked/upvoted
+  comments: DiscussionComment[];
+}

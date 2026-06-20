@@ -4,8 +4,8 @@ import {
   Film, Sparkles, MapPin, Users, Clapperboard 
 } from 'lucide-react';
 
-import { Screening, PastMovie, Recommendation, User, UserReview } from './types';
-import { initialScreenings, initialPastMovies, initialRecommendations } from './initialData';
+import { Screening, PastMovie, Recommendation, User, UserReview, ClubDiscussion } from './types';
+import { initialScreenings, initialPastMovies, initialRecommendations, initialDiscussions } from './initialData';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { 
@@ -22,12 +22,13 @@ import Navbar from './components/Navbar';
 import ScreeningSchedule from './components/ScreeningSchedule';
 import PastScreenings from './components/PastScreenings';
 import Recommendations from './components/Recommendations';
-import TriviaGame from './components/TriviaGame';
+import ClubDiscussions from './components/ClubDiscussions';
 
 // Prevents reactive re-seeding triggers when an admin empties the database collections manually
 let screeningsSeedAttempted = false;
 let pastMoviesSeedAttempted = false;
 let recommendationsSeedAttempted = false;
+let discussionsSeedAttempted = false;
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -38,6 +39,7 @@ export default function App() {
   const [screenings, setScreenings] = useState<Screening[]>(initialScreenings);
   const [pastMovies, setPastMovies] = useState<PastMovie[]>(initialPastMovies);
   const [recommendations, setRecommendations] = useState<Recommendation[]>(initialRecommendations);
+  const [discussions, setDiscussions] = useState<ClubDiscussion[]>(initialDiscussions);
 
   // Load session auth from local storage on bootstrap
   useEffect(() => {
@@ -231,6 +233,45 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // 4. Subscribe to Discussions & Reviews
+  useEffect(() => {
+    const discussionsCol = collection(db, 'discussions');
+    const unsubscribe = onSnapshot(discussionsCol, async (snapshot) => {
+      if (snapshot.empty) {
+        if (!discussionsSeedAttempted) {
+          discussionsSeedAttempted = true;
+          console.log('[Firebase] Discussions database is newly provisioned. Setting up initial entries...');
+          setDiscussions(initialDiscussions);
+          try {
+            const batch = writeBatch(db);
+            initialDiscussions.forEach((d) => {
+              batch.set(doc(db, 'discussions', d.id), d);
+            });
+            await batch.commit();
+            console.log('[Firebase] Discussions successfully seeded atomically.');
+          } catch (e) {
+            console.warn('[Firebase] Atomic seeding of discussions failed:', e);
+          }
+        } else {
+          console.log('[Firebase] Discussions collection manually emptied.');
+          setDiscussions([]);
+        }
+      } else {
+        const list: ClubDiscussion[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push(docSnap.data() as ClubDiscussion);
+        });
+        // Sort by createdAt descending
+        list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        setDiscussions(list);
+      }
+    }, (error) => {
+      console.warn('[Firebase] Discussions onSnapshot error (handled gracefully):', error);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   // Listen to real Firebase auth status changes and auto-login if authenticated
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -342,8 +383,28 @@ export default function App() {
   };
 
   // Student Recommendation Submission Action
-  const handleAddRecommendation = async (recData: Omit<Recommendation, 'id' | 'suggestedBy' | 'suggestedByName' | 'suggestedAt' | 'votes'>) => {
-    if (!currentUser) return;
+  const handleAddRecommendation = async (recData: Omit<Recommendation, 'id' | 'suggestedBy' | 'suggestedByName' | 'suggestedAt' | 'votes'>): Promise<'added' | 'voted' | 'already_voted'> => {
+    if (!currentUser) return 'added';
+    
+    const cleanTitle = recData.title.trim().toLowerCase();
+    const existing = recommendations.find(r => r.title.trim().toLowerCase() === cleanTitle);
+
+    if (existing) {
+      if (!existing.votes.includes(currentUser.email)) {
+        try {
+          const updatedVotes = [...existing.votes, currentUser.email];
+          await updateDoc(doc(db, 'recommendations', existing.id), {
+            votes: updatedVotes
+          });
+          return 'voted';
+        } catch (error) {
+          handleFirestoreError(error, OperationType.UPDATE, `recommendations/${existing.id}`);
+          return 'voted';
+        }
+      } else {
+        return 'already_voted';
+      }
+    }
     
     const id = `rec-${Date.now()}`;
     const newRec: Recommendation = {
@@ -357,8 +418,48 @@ export default function App() {
 
     try {
       await setDoc(doc(db, 'recommendations', id), newRec);
+      return 'added';
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `recommendations/${id}`);
+      return 'added';
+    }
+  };
+
+  const handleUpdateRecommendation = async (id: string, updatedFields: Partial<Recommendation>) => {
+    try {
+      await updateDoc(doc(db, 'recommendations', id), updatedFields);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `recommendations/${id}`);
+    }
+  };
+
+  const handleMarkScreened = async (rec: Recommendation, date: string, rating: number) => {
+    const pastId = `pm-${Date.now()}`;
+    const genreArray = rec.genre
+      ? rec.genre.split(',').map((g: string) => g.trim()).filter(Boolean)
+      : ['Cinema'];
+
+    const newPastMovie: PastMovie = {
+      id: pastId,
+      title: rec.title,
+      director: rec.director,
+      year: rec.year,
+      screenedDate: date || new Date().toISOString().split('T')[0],
+      rating: rating || 4.5,
+      letterboxdUrl: `https://letterboxd.com/film/${rec.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}/`,
+      posterUrl: rec.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300',
+      synopsis: rec.notes || '',
+      genre: genreArray,
+      reviews: []
+    };
+
+    try {
+      // 1. Add to pastMovies collection
+      await setDoc(doc(db, 'pastMovies', pastId), newPastMovie);
+      // 2. Delete from recommendations collection
+      await deleteDoc(doc(db, 'recommendations', rec.id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `pastMovies/${pastId}`);
     }
   };
 
@@ -377,6 +478,75 @@ export default function App() {
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `recommendations/${id}`);
+    }
+  };
+
+  const handleAddDiscussion = async (data: Omit<ClubDiscussion, 'id' | 'createdAt' | 'authorEmail' | 'authorName' | 'votes' | 'comments'>) => {
+    if (!currentUser) return;
+    const id = `disc-${Date.now()}`;
+    const newEntry: ClubDiscussion = {
+      ...data,
+      id,
+      authorEmail: currentUser.email,
+      authorName: currentUser.name,
+      createdAt: new Date().toISOString(),
+      votes: [currentUser.email],
+      comments: []
+    };
+    try {
+      await setDoc(doc(db, 'discussions', id), newEntry);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `discussions/${id}`);
+    }
+  };
+
+  const handleAddComment = async (discussionId: string, content: string) => {
+    if (!currentUser) return;
+    const target = discussions.find(d => d.id === discussionId);
+    if (!target) return;
+
+    const newComment = {
+      id: `comm-${Date.now()}`,
+      authorEmail: currentUser.email,
+      authorName: currentUser.name,
+      content,
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      const updatedComments = [...target.comments, newComment];
+      await updateDoc(doc(db, 'discussions', discussionId), {
+        comments: updatedComments
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `discussions/${discussionId}`);
+    }
+  };
+
+  const handleVoteDiscussion = async (discussionId: string) => {
+    if (!currentUser) return;
+    const target = discussions.find(d => d.id === discussionId);
+    if (!target) return;
+
+    const hasVoted = target.votes.includes(currentUser.email);
+    const newVotes = hasVoted
+      ? target.votes.filter(email => email !== currentUser.email)
+      : [...target.votes, currentUser.email];
+
+    try {
+      await updateDoc(doc(db, 'discussions', discussionId), {
+        votes: newVotes
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `discussions/${discussionId}`);
+    }
+  };
+
+  const handleDeleteDiscussion = async (discussionId: string) => {
+    try {
+      await deleteDoc(doc(db, 'discussions', discussionId));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `discussions/${discussionId}`);
     }
   };
 
@@ -463,17 +633,28 @@ export default function App() {
               />
             )}
 
+            {activeTab === 'discussions' && (
+              <ClubDiscussions
+                discussions={discussions}
+                onAddDiscussion={handleAddDiscussion}
+                onAddComment={handleAddComment}
+                onVoteDiscussion={handleVoteDiscussion}
+                onDeleteDiscussion={handleDeleteDiscussion}
+                currentUser={currentUser}
+                adminMode={adminMode}
+              />
+            )}
+
             {activeTab === 'recommendations' && (
               <Recommendations
                 recommendations={recommendations}
                 currentUser={currentUser}
+                adminMode={adminMode}
                 onAddRecommendation={handleAddRecommendation}
                 onVoteRecommendation={handleVoteRecommendation}
+                onUpdateRecommendation={handleUpdateRecommendation}
+                onMarkScreened={handleMarkScreened}
               />
-            )}
-
-            {activeTab === 'trivia' && (
-              <TriviaGame />
             )}
           </motion.div>
         </AnimatePresence>

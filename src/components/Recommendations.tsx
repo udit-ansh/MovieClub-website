@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Plus, MessageSquareHeart, Search, ArrowUp, ThumbsUp, Calendar, 
-  Filter, Sparkles, User, HelpCircle, Film, BookOpen, AlertCircle, Link2, Upload
+  Filter, Sparkles, User, HelpCircle, Film, BookOpen, AlertCircle, Link2, Upload, Pencil, Star
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Recommendation } from '../types';
@@ -10,16 +10,22 @@ import { compressAndResizeImage } from '../utils/imageCompressor';
 
 interface RecommendationsProps {
   recommendations: Recommendation[];
-  currentUser: { email: string; name: string } | null;
-  onAddRecommendation: (rec: Omit<Recommendation, 'id' | 'suggestedBy' | 'suggestedByName' | 'suggestedAt' | 'votes'>) => void;
+  currentUser: { email: string; name: string; role: 'admin' | 'student' } | null;
+  adminMode?: boolean;
+  onAddRecommendation: (rec: Omit<Recommendation, 'id' | 'suggestedBy' | 'suggestedByName' | 'suggestedAt' | 'votes'>) => any;
   onVoteRecommendation: (id: string, userEmail: string) => void;
+  onUpdateRecommendation?: (id: string, updatedFields: Partial<Recommendation>) => void;
+  onMarkScreened?: (rec: Recommendation, date: string, rating: number) => void;
 }
 
 export default function Recommendations({
   recommendations,
   currentUser,
+  adminMode,
   onAddRecommendation,
-  onVoteRecommendation
+  onVoteRecommendation,
+  onUpdateRecommendation,
+  onMarkScreened
 }: RecommendationsProps) {
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,6 +40,12 @@ export default function Recommendations({
   const [posterUrl, setPosterUrl] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Additional states for editing suggestions and marking as screened
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [screeningToMark, setScreeningToMark] = useState<Recommendation | null>(null);
+  const [screenDate, setScreenDate] = useState(new Date().toISOString().split('T')[0]);
+  const [screenRating, setScreenRating] = useState<number>(4.5);
 
   // Poster image file upload
   const [posterFileError, setPosterFileError] = useState('');
@@ -249,7 +261,7 @@ export default function Recommendations({
     setTimeout(() => setSuccessMsg(''), 4500);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) {
       setErrorMsg('Unauthorized context! Please sign in with your email first.');
@@ -273,7 +285,26 @@ export default function Recommendations({
       recPayload.posterUrl = posterUrl.trim();
     }
 
-    onAddRecommendation(recPayload);
+    if (editingId) {
+      if (onUpdateRecommendation) {
+        onUpdateRecommendation(editingId, recPayload);
+      }
+      setSuccessMsg(`✨ Recommendation for "${title}" updated successfully!`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+      setEditingId(null);
+    } else {
+      const result = await onAddRecommendation(recPayload);
+      if (result === 'voted') {
+        setSuccessMsg(`✨ "${title}" has already been recommended! We auto-incremented its upvote count for you.`);
+        setTimeout(() => setSuccessMsg(''), 5500);
+      } else if (result === 'already_voted') {
+        setSuccessMsg(`ℹ️ "${title}" has already been recommended, and you've already upvoted it!`);
+        setTimeout(() => setSuccessMsg(''), 5500);
+      } else {
+        setSuccessMsg('Film recommendation logged successfully!');
+        setTimeout(() => setSuccessMsg(''), 4000);
+      }
+    }
 
     // Reset states
     setTitle('');
@@ -285,8 +316,6 @@ export default function Recommendations({
     setLetterboxdInput('');
     setSelectedMovie(null);
     setErrorMsg('');
-    setSuccessMsg('Film recommendation logged successfully!');
-    setTimeout(() => setSuccessMsg(''), 4000);
     setShowSubmitModal(false);
   };
 
@@ -486,6 +515,45 @@ export default function Recommendations({
                       {new Date(rec.suggestedAt).toLocaleDateString()}
                     </span>
                   </div>
+
+                  {/* Action buttons (Edit for author, Mark Screened for admin) */}
+                  {((currentUser && rec.suggestedBy === currentUser.email) || adminMode || (currentUser?.role === 'admin')) && (
+                    <div className="mt-3 pt-2.5 border-t border-zinc-900/60 flex items-center justify-end gap-2 shrink-0">
+                      {currentUser && rec.suggestedBy === currentUser.email && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingId(rec.id);
+                            setTitle(rec.title);
+                            setDirector(rec.director);
+                            setYear(rec.year);
+                            setGenre(rec.genre);
+                            setNotes(rec.notes);
+                            setPosterUrl(rec.posterUrl || '');
+                            setShowSubmitModal(true);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 hover:border-amber-500/30 text-[10px] font-bold text-zinc-300 hover:text-amber-400 transition-all cursor-pointer"
+                        >
+                          <Pencil className="h-3 w-3 text-amber-500/80" />
+                          <span>EDIT</span>
+                        </button>
+                      )}
+                      {(adminMode || currentUser?.role === 'admin') && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setScreeningToMark(rec);
+                            setScreenDate(new Date().toISOString().split('T')[0]);
+                            setScreenRating(4.5);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/15 hover:border-amber-500/35 text-[10px] font-bold text-amber-400 hover:text-amber-300 transition-all cursor-pointer"
+                        >
+                          <Star className="h-3 w-3 fill-amber-400/80 text-amber-400" />
+                          <span>MARK SCREENED</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -520,13 +588,13 @@ export default function Recommendations({
 
             <div className="mb-4">
               <span className="text-xs font-mono text-amber-500 uppercase tracking-widest font-semibold flex items-center gap-1">
-                <Sparkles className="h-3.5 w-3.5" /> Share Cinema
+                <Sparkles className="h-3.5 w-3.5" /> {editingId ? 'Edit Cinema' : 'Share Cinema'}
               </span>
               <h2 className="font-serif text-xl font-bold text-zinc-100 mt-0.5">
-                Suggest Screening Nomination
+                {editingId ? 'Edit Wishlist Nomination' : 'Suggest Screening Nomination'}
               </h2>
               <p className="text-xs text-zinc-400 mt-1">
-                Recommend movies you want to screen to your fellow peers on campus.
+                {editingId ? 'Refine or perfect the details to help promote your recommendation.' : 'Recommend movies you want to screen to your fellow peers on campus.'}
               </p>
             </div>
 
@@ -788,10 +856,92 @@ export default function Recommendations({
                   type="submit"
                   className="bg-amber-500 hover:bg-amber-600 text-zinc-950 px-5 py-2 rounded-lg text-sm font-semibold transition-colors font-mono cursor-pointer"
                 >
-                  SUBMIT RECOMMENDATION
+                  {editingId ? 'SAVE CHANGES' : 'SUBMIT RECOMMENDATION'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Mark Screened Modal */}
+      {screeningToMark && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-850 bg-zinc-950 p-6 shadow-2xl relative">
+            <button
+              onClick={() => setScreeningToMark(null)}
+              className="absolute top-4 right-4 p-2 text-zinc-500 hover:text-zinc-200 rounded-lg cursor-pointer"
+            >
+              <Plus className="h-5 w-5 rotate-45" />
+            </button>
+
+            <div className="mb-4">
+              <span className="text-xs font-mono text-amber-500 uppercase tracking-widest font-semibold flex items-center gap-1.5">
+                <Star className="h-4 w-4 text-amber-500 fill-amber-500" /> Archive to Screened Section
+              </span>
+              <h2 className="font-serif text-xl font-bold text-zinc-100 mt-1">
+                Mark "{screeningToMark.title}" as Screened
+              </h2>
+              <p className="text-xs text-zinc-400 mt-1">
+                This will remove the suggestion from the student wishlist and log it into the <b>Past Screenings</b> archive.
+              </p>
+            </div>
+
+            <div className="space-y-4 text-sm text-zinc-300">
+              <div>
+                <label className="block text-xs font-mono text-zinc-400 mb-1">SCREENING DATE *</label>
+                <input
+                  type="date"
+                  value={screenDate}
+                  onChange={(e) => setScreenDate(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-2 text-sm text-zinc-100 focus:border-amber-500/50 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-mono text-zinc-400">RATING *</label>
+                  <span className="text-amber-500 text-xs font-bold font-mono">{screenRating} / 5 Stars</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="5"
+                  step="0.5"
+                  value={screenRating}
+                  onChange={(e) => setScreenRating(Number(e.target.value))}
+                  className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                />
+                <div className="flex justify-between text-[10px] text-zinc-500 font-mono mt-1">
+                  <span>0.5 Stars</span>
+                  <span>5.0 Stars (Masterpiece)</span>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-3 border-t border-zinc-900">
+                <button
+                  type="button"
+                  onClick={() => setScreeningToMark(null)}
+                  className="px-4 py-2 text-sm font-semibold text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onMarkScreened) {
+                      onMarkScreened(screeningToMark, screenDate, screenRating);
+                    }
+                    setSuccessMsg(`✨ "${screeningToMark.title}" successfully archived to Past Screenings!`);
+                    setTimeout(() => setSuccessMsg(''), 4500);
+                    setScreeningToMark(null);
+                  }}
+                  className="bg-amber-500 hover:bg-amber-600 text-zinc-950 px-5 py-2 rounded-lg text-sm font-semibold transition-colors font-mono cursor-pointer"
+                >
+                  ARCHIVE ENTRY
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
