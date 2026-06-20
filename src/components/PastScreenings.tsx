@@ -4,6 +4,7 @@ import {
   ChevronDown, ChevronUp, User, Clock, Send, MessageCircleCode, CheckCircle2 
 } from 'lucide-react';
 import { PastMovie, UserReview } from '../types';
+import { getPolishedPosterUrl } from '../letterboxdDb';
 
 interface PastScreeningsProps {
   pastMovies: PastMovie[];
@@ -167,7 +168,7 @@ export default function PastScreenings({ pastMovies, onAddReview, currentUser }:
                 {/* Poster Box */}
                 <div className="relative w-24 h-36 flex-shrink-0 rounded-lg overflow-hidden border border-zinc-850 bg-zinc-900 shadow-md">
                   <img
-                    src={movie.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300'}
+                    src={getPolishedPosterUrl(movie.title, movie.posterUrl)}
                     alt={movie.title}
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-102"

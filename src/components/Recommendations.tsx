@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Recommendation } from '../types';
-import { letterboxdMovies, LetterboxdMovie, findMovieByUrlOrSlug, parseLetterboxdUrlToMovie } from '../letterboxdDb';
+import { letterboxdMovies, LetterboxdMovie, findMovieByUrlOrSlug, parseLetterboxdUrlToMovie, getPolishedPosterUrl } from '../letterboxdDb';
 import { compressAndResizeImage } from '../utils/imageCompressor';
 
 interface RecommendationsProps {
@@ -455,7 +455,7 @@ export default function Recommendations({
                 {rec.posterUrl && (
                   <div className="w-24 h-36 shrink-0 rounded-lg overflow-hidden border border-zinc-900 bg-zinc-900 shadow-md self-center sm:self-start">
                     <img 
-                      src={rec.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300'} 
+                      src={getPolishedPosterUrl(rec.title, rec.posterUrl)} 
                       alt={rec.title} 
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -635,7 +635,7 @@ export default function Recommendations({
                           className="w-full px-3 py-2 text-left text-xs hover:bg-zinc-900 flex items-center gap-3 transition-colors cursor-pointer"
                         >
                           <img 
-                            src={movie.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=100'} 
+                            src={getPolishedPosterUrl(movie.title, movie.posterUrl)} 
                             className="w-7 h-10 object-cover rounded shrink-0 bg-zinc-850 border border-zinc-800/50" 
                             referrerPolicy="no-referrer" 
                             onError={(e) => {
@@ -659,7 +659,7 @@ export default function Recommendations({
                 {selectedMovie && (
                   <div className="flex items-start gap-4 bg-zinc-950/75 p-3 rounded-lg border border-zinc-800 animate-fadeIn">
                     <img 
-                      src={selectedMovie.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=100'} 
+                      src={getPolishedPosterUrl(selectedMovie.title, selectedMovie.posterUrl)} 
                       className="w-12 h-18 object-cover rounded border border-zinc-850 shrink-0 shadow-md" 
                       referrerPolicy="no-referrer" 
                       onError={(e) => {

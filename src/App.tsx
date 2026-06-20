@@ -48,134 +48,6 @@ export default function App() {
   const [discussions, setDiscussions] = useState<ClubDiscussion[]>(initialDiscussions);
   const [polls, setPolls] = useState<Poll[]>([]);
 
-  // Track repaired IDs to avoid infinite loops and over-requesting
-  const attemptedHeals = useRef<Set<string>>(new Set());
-
-  // Automatic Movie Poster Healer & Dynamic Auto-repair
-  const healMoviePostersInDatabase = async (collectionName: string, items: any[]) => {
-    for (const item of items) {
-      if (!item.id) continue;
-      const poster = item.posterUrl || '';
-      const hasUnsplashFallback = poster.includes('images.unsplash.com');
-      const isMissingPoster = !poster || poster.trim() === '';
-
-      if (hasUnsplashFallback || isMissingPoster) {
-        const healKey = `${collectionName}-${item.id}`;
-        if (attemptedHeals.current.has(healKey)) {
-          continue;
-        }
-        attemptedHeals.current.add(healKey);
-
-        console.log(`[Healer] Document in "${collectionName}" with ID "${item.id}" ("${item.title}") has missing/placeholder poster.`);
-        
-        // 1. Look in the local high-integrity letterboxdMovies catalog
-        const localMatch = letterboxdMovies.find(m => 
-          m.title.toLowerCase() === item.title.toLowerCase() || 
-          (item.id && m.id === item.id)
-        );
-
-        if (localMatch && localMatch.posterUrl && !localMatch.posterUrl.includes('images.unsplash.com')) {
-          console.log(`[Healer] Local repair found for "${item.title}": ${localMatch.posterUrl}`);
-          try {
-            await updateDoc(doc(db, collectionName, item.id), { posterUrl: localMatch.posterUrl });
-          } catch (err) {
-            console.warn(`[Healer] Failed to update local match for "${item.title}":`, err);
-          }
-        } else {
-          // 2. Query Gemini API dynamically on the server and update
-          console.log(`[Healer] Requesting Gemini to resolve authentic poster for: "${item.title}"`);
-          try {
-            const res = await fetch('/api/movie-details', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ movieQuery: item.title })
-            });
-            if (res.ok) {
-              const details = await res.json();
-              if (details.posterUrl && !details.posterUrl.includes('images.unsplash.com')) {
-                console.log(`[Healer] Gemini successfully resolved poster for "${item.title}": ${details.posterUrl}`);
-                const updatePayload: any = { posterUrl: details.posterUrl };
-                if (details.director && (!item.director || item.director === 'Unknown' || item.director === '')) {
-                  updatePayload.director = details.director;
-                }
-                if (details.year && (!item.year || Number(item.year) === 2024)) {
-                  updatePayload.year = Number(details.year);
-                }
-                
-                // also heal backdrop if missing
-                if ((!item.backdropUrl || item.backdropUrl.includes('images.unsplash.com')) && details.backdropUrl && !details.backdropUrl.includes('images.unsplash.com')) {
-                  updatePayload.backdropUrl = details.backdropUrl;
-                }
-
-                await updateDoc(doc(db, collectionName, item.id), updatePayload);
-              }
-            }
-          } catch (fetchErr) {
-            console.warn(`[Healer] Live repair fetch failed for "${item.title}":`, fetchErr);
-          }
-        }
-      }
-    }
-  };
-
-  const healPollMoviePostersInDatabase = async (pollsList: Poll[]) => {
-    for (const poll of pollsList) {
-      if (!poll.id) continue;
-      const healKey = `polls-${poll.id}`;
-      if (attemptedHeals.current.has(healKey)) {
-        continue;
-      }
-
-      let needsUpdate = false;
-      const updatedOptions = await Promise.all(poll.options.map(async (opt) => {
-        const poster = opt.posterUrl || '';
-        const hasUnsplashFallback = poster.includes('images.unsplash.com');
-        const isMissingPoster = !poster || poster.trim() === '';
-
-        if (hasUnsplashFallback || isMissingPoster) {
-          needsUpdate = true;
-          console.log(`[Healer] Poll "${poll.id}" option "${opt.title}" has missing/placeholder poster.`);
-
-          // 1. Look in local letterboxdMovies catalog
-          const localMatch = letterboxdMovies.find(m => m.title.toLowerCase() === opt.title.toLowerCase());
-          if (localMatch && localMatch.posterUrl && !localMatch.posterUrl.includes('images.unsplash.com')) {
-            console.log(`[Healer] Poll Local repair found for "${opt.title}": ${localMatch.posterUrl}`);
-            return { ...opt, posterUrl: localMatch.posterUrl };
-          } else {
-            // 2. Fetch from Gemini
-            try {
-              const res = await fetch('/api/movie-details', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ movieQuery: opt.title })
-              });
-              if (res.ok) {
-                const details = await res.json();
-                if (details.posterUrl && !details.posterUrl.includes('images.unsplash.com')) {
-                  console.log(`[Healer] Poll Gemini repair found for "${opt.title}": ${details.posterUrl}`);
-                  return { ...opt, posterUrl: details.posterUrl };
-                }
-              }
-            } catch (err) {
-              console.warn(`[Healer] Poll live repair failed for "${opt.title}":`, err);
-            }
-          }
-        }
-        return opt;
-      }));
-
-      if (needsUpdate) {
-        attemptedHeals.current.add(healKey);
-        try {
-          await updateDoc(doc(db, 'polls', poll.id), { options: updatedOptions });
-          console.log(`[Healer] Updated poll "${poll.id}" with repaired options.`);
-        } catch (err) {
-          console.warn(`[Healer] Failed to update repaired poll "${poll.id}":`, err);
-        }
-      }
-    }
-  };
-
   // Load session auth from local storage on bootstrap
   useEffect(() => {
     const savedUser = localStorage.getItem('iiser_movie_user');
@@ -231,7 +103,6 @@ export default function App() {
           return dateTimeA.localeCompare(dateTimeB);
         });
         setScreenings(list);
-        healMoviePostersInDatabase('screenings', list);
       }
     }, (error) => {
       const errInfo = {
@@ -288,7 +159,6 @@ export default function App() {
         // Sort past movies descending by screening date
         list.sort((a, b) => b.screenedDate.localeCompare(a.screenedDate));
         setPastMovies(list);
-        healMoviePostersInDatabase('pastMovies', list);
       }
     }, (error) => {
       const errInfo = {
@@ -345,7 +215,6 @@ export default function App() {
         // Sort by proposed date descending
         list.sort((a, b) => b.suggestedAt.localeCompare(a.suggestedAt));
         setRecommendations(list);
-        healMoviePostersInDatabase('recommendations', list);
       }
     }, (error) => {
       const errInfo = {
@@ -421,7 +290,6 @@ export default function App() {
       // Sort by createdAt descending
       list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       setPolls(list);
-      healPollMoviePostersInDatabase(list);
     }, (error) => {
       console.warn('[Firebase] Polls onSnapshot error (handled gracefully):', error);
     });

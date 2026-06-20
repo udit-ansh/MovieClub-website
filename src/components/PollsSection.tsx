@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Poll, PollMovieOption, User as AppUser } from '../types';
 import { db, sanitizeDoc } from '../firebase';
 import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { getPolishedPosterUrl } from '../letterboxdDb';
 
 interface PollsSectionProps {
   polls: Poll[];
@@ -459,7 +460,7 @@ export default function PollsSection({
 
                         <div className="flex flex-col md:flex-row gap-5 items-start">
                           <img 
-                            src={winner.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300'} 
+                            src={getPolishedPosterUrl(winner.title, winner.posterUrl)} 
                             alt={winner.title}
                             className="w-24 h-36 sm:w-28 sm:h-42 object-cover rounded-lg bg-zinc-900 border border-amber-500/20 shrink-0 shadow-lg"
                             referrerPolicy="no-referrer"
@@ -512,7 +513,7 @@ export default function PollsSection({
                                 className="bg-zinc-900/60 p-4 rounded-xl border border-zinc-900 flex items-start gap-3.5 hover:bg-zinc-900 transition-all duration-200"
                               >
                                 <img 
-                                  src={runner.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=150'} 
+                                  src={getPolishedPosterUrl(runner.title, runner.posterUrl)} 
                                   alt={runner.title}
                                   className="w-14 h-20 object-cover rounded bg-zinc-950 border border-zinc-800 shrink-0"
                                   referrerPolicy="no-referrer"
@@ -576,7 +577,7 @@ export default function PollsSection({
                           >
                             <div className="flex gap-4">
                               <img
-                                src={option.posterUrl || 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=200'}
+                                src={getPolishedPosterUrl(option.title, option.posterUrl)}
                                 alt={option.title}
                                 className="w-16 h-24 object-cover rounded-md bg-zinc-950 border border-zinc-800/80 shrink-0 shadow"
                                 referrerPolicy="no-referrer"
