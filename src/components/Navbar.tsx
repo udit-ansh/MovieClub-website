@@ -349,8 +349,7 @@ export default function Navbar({
               { id: 'past', label: 'Past Screenings' },
               { id: 'discussions', label: 'Discussions' },
               { id: 'recommendations', label: 'Recommendations' },
-              { id: 'polls', label: 'Polls' },
-              { id: 'people', label: 'Members' }
+              { id: 'polls', label: 'Polls' }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -501,8 +500,7 @@ export default function Navbar({
             { id: 'past', label: 'Past' },
             { id: 'discussions', label: 'Discuss' },
             { id: 'recommendations', label: 'Recs' },
-            { id: 'polls', label: 'Polls' },
-            { id: 'people', label: 'People' }
+            { id: 'polls', label: 'Polls' }
           ].map((tab) => (
             <button
               key={tab.id}
