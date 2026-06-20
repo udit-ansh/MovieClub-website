@@ -475,6 +475,7 @@ export default function App() {
       await setDoc(doc(db, 'screenings', id), sanitizeDoc(newEntry));
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `screenings/${id}`);
+      throw error;
     }
   };
 
@@ -483,6 +484,7 @@ export default function App() {
       await setDoc(doc(db, 'screenings', updatedItem.id), sanitizeDoc(updatedItem));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `screenings/${updatedItem.id}`);
+      throw error;
     }
   };
 
@@ -491,6 +493,7 @@ export default function App() {
       await deleteDoc(doc(db, 'screenings', id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `screenings/${id}`);
+      throw error;
     }
   };
 
@@ -502,21 +505,35 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
 
-    const targetMovie = pastMovies.find(m => m.id === movieId);
+    const targetMovie = computedPastMovies.find(m => m.id === movieId);
     if (!targetMovie) return;
 
     try {
       const updatedReviews = [newReview, ...targetMovie.reviews];
-      await updateDoc(doc(db, 'pastMovies', movieId), sanitizeDoc({
-        reviews: updatedReviews
-      }));
+      if (movieId.startsWith('pm-')) {
+        const originalScreeningId = movieId.replace('pm-', '');
+        const newPastMovie: PastMovie = {
+          ...targetMovie,
+          id: movieId,
+          reviews: updatedReviews
+        };
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'pastMovies', movieId), sanitizeDoc(newPastMovie));
+        batch.delete(doc(db, 'screenings', originalScreeningId));
+        await batch.commit();
+      } else {
+        await updateDoc(doc(db, 'pastMovies', movieId), sanitizeDoc({
+          reviews: updatedReviews
+        }));
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `pastMovies/${movieId}`);
+      throw error;
     }
   };
 
   const handleUpdateReview = async (movieId: string, reviewId: string, updatedComment: string, updatedRating: number) => {
-    const targetMovie = pastMovies.find(m => m.id === movieId);
+    const targetMovie = computedPastMovies.find(m => m.id === movieId);
     if (!targetMovie) return;
 
     try {
@@ -532,25 +549,72 @@ export default function App() {
         return r;
       });
 
-      await updateDoc(doc(db, 'pastMovies', movieId), sanitizeDoc({
-        reviews: updatedReviews
-      }));
+      if (movieId.startsWith('pm-')) {
+        const originalScreeningId = movieId.replace('pm-', '');
+        const newPastMovie: PastMovie = {
+          ...targetMovie,
+          id: movieId,
+          reviews: updatedReviews
+        };
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'pastMovies', movieId), sanitizeDoc(newPastMovie));
+        batch.delete(doc(db, 'screenings', originalScreeningId));
+        await batch.commit();
+      } else {
+        await updateDoc(doc(db, 'pastMovies', movieId), sanitizeDoc({
+          reviews: updatedReviews
+        }));
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `pastMovies/${movieId}`);
+      throw error;
     }
   };
 
   const handleDeleteReview = async (movieId: string, reviewId: string) => {
-    const targetMovie = pastMovies.find(m => m.id === movieId);
+    const targetMovie = computedPastMovies.find(m => m.id === movieId);
     if (!targetMovie) return;
 
     try {
       const updatedReviews = targetMovie.reviews.filter(r => r.id !== reviewId);
-      await updateDoc(doc(db, 'pastMovies', movieId), sanitizeDoc({
-        reviews: updatedReviews
-      }));
+      if (movieId.startsWith('pm-')) {
+        const originalScreeningId = movieId.replace('pm-', '');
+        const newPastMovie: PastMovie = {
+          ...targetMovie,
+          id: movieId,
+          reviews: updatedReviews
+        };
+        const batch = writeBatch(db);
+        batch.set(doc(db, 'pastMovies', movieId), sanitizeDoc(newPastMovie));
+        batch.delete(doc(db, 'screenings', originalScreeningId));
+        await batch.commit();
+      } else {
+        await updateDoc(doc(db, 'pastMovies', movieId), sanitizeDoc({
+          reviews: updatedReviews
+        }));
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `pastMovies/${movieId}`);
+      throw error;
+    }
+  };
+
+  const handleImportPastMovies = async (importedMovies: Omit<PastMovie, 'reviews'>[]) => {
+    try {
+      const batch = writeBatch(db);
+      importedMovies.forEach(movie => {
+        const finalId = movie.id || `pm-${movie.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}`;
+        const newDocPayload: PastMovie = {
+          ...movie,
+          id: finalId,
+          reviews: []
+        };
+        batch.set(doc(db, 'pastMovies', finalId), sanitizeDoc(newDocPayload));
+      });
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `pastMovies/batch-import`);
+      throw error;
     }
   };
 
@@ -804,6 +868,8 @@ export default function App() {
                 currentUser={currentUser}
                 onUpdateReview={handleUpdateReview}
                 onDeleteReview={handleDeleteReview}
+                adminMode={adminMode}
+                onImportPastMovies={handleImportPastMovies}
               />
             )}
 

@@ -413,6 +413,102 @@ async function fetchUrlMetadata(url: string) {
     }
   });
 
+  // API Endpoint to fetch and parse the public Letterboxd RSS Feed for Admin Diary updates
+  app.post("/api/letterboxd-rss", async (req, res) => {
+    const { username } = req.body;
+    if (!username) {
+      return res.status(400).json({ error: "username is required" });
+    }
+
+    console.log(`[Server] Syncing Letterboxd diary RSS for user: "${username}"`);
+
+    try {
+      const feedUrl = `https://letterboxd.com/${encodeURIComponent(username.trim().toLowerCase())}/rss/`;
+      const response = await fetch(feedUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+          'Accept': 'application/xml, text/xml, */*'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Letterboxd profile feed not accessible (HTTP ${response.status}). Ensure the username is correct and public on Letterboxd.`);
+      }
+
+      const xmlText = await response.text();
+      if (!xmlText || !xmlText.includes("<item>")) {
+        throw new Error("No recent diary entries found in Letterboxd RSS feed.");
+      }
+
+      // Limit XML length to fit safely in model token window while capturing up to 12 recent entries
+      const maxCharacterLimit = 25000;
+      let truncatedXml = xmlText;
+      if (truncatedXml.length > maxCharacterLimit) {
+        const lastItemIdx = truncatedXml.lastIndexOf("</item>", maxCharacterLimit);
+        if (lastItemIdx !== -1) {
+          truncatedXml = truncatedXml.substring(0, lastItemIdx + 7) + "\n</channel>\n</rss>";
+        } else {
+          truncatedXml = truncatedXml.substring(0, maxCharacterLimit) + "\n</channel>\n</rss>";
+        }
+      }
+
+      // Prompt Gemini to parse the RSS XML into structured JSON
+      const gResponse = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: `Parse the following raw Letterboxd RSS XML Feed into a high-quality, structured JSON array of watched movies. 
+        Each object MUST represent a watched movie and have the following properties:
+        - title: The official name/title of the movie.
+        - year: The original release year of the movie (as an integer).
+        - letterboxdUrl: The direct URL to the movie on Letterboxd.
+        - screenedDate: The date the movie was watched, formatted as YYYY-MM-DD. Use <letterboxd:watchedDate> if present, or format <pubDate>.
+        - rating: Member rating mapped to a number out of 5 (e.g. 4.5, 3.0). Parse from <letterboxd:memberRating> or stars of the form '★★★★½' in title/description. If no rating is present, default to 4.0.
+        - synopsis: A brief description/synopsis of the movie or a clean summary of the user review.
+        - director: If you know or can search/infer the director(s) for this movie, provide it; otherwise guess or leave empty.
+        - genre: A list of genres (e.g., ["Drama", "Sci-Fi"]).
+        - posterUrl: A beautiful high quality poster URL (you can search or construct a tmdb or wikipedia or unsplash poster URL if not provided directly in feed).
+
+        XML Feed Content snippet:
+        ${truncatedXml}`,
+        config: {
+          systemInstruction: "You are a professional cinema data extraction utility. Extract and return ONLY a valid structured JSON list of movies. Do not include markdown code ticks other than standard JSON format.",
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                year: { type: Type.INTEGER },
+                letterboxdUrl: { type: Type.STRING },
+                screenedDate: { type: Type.STRING },
+                rating: { type: Type.NUMBER },
+                synopsis: { type: Type.STRING },
+                director: { type: Type.STRING },
+                genre: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING }
+                },
+                posterUrl: { type: Type.STRING }
+              },
+              required: ["title", "year", "letterboxdUrl", "screenedDate", "rating", "synopsis", "director", "genre", "posterUrl"]
+            }
+          }
+        }
+      });
+
+      const parsedText = gResponse.text;
+      if (!parsedText) {
+        throw new Error("Failed to parse RSS feed movie details.");
+      }
+
+      const moviesList = JSON.parse(parsedText.trim());
+      res.json({ success: true, username, movies: moviesList });
+    } catch (err: any) {
+      console.error("[ServerError] Letterboxd RSS sync failed:", err);
+      res.status(500).json({ error: err.message || "Failed to parse current Letterboxd RSS feed." });
+    }
+  });
+
   // Serve static assets and bind Vite's development middleware
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

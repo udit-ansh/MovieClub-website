@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Star, MessageSquare, ExternalLink, RefreshCw, Calendar, 
   ChevronDown, ChevronUp, User, Clock, Send, MessageCircleCode, CheckCircle2,
-  Edit3, Trash2
+  Edit3, Trash2, Plus, Search, X, AlertCircle
 } from 'lucide-react';
 import { PastMovie, UserReview } from '../types';
 import { getPolishedPosterUrl } from '../letterboxdDb';
@@ -13,6 +13,8 @@ interface PastScreeningsProps {
   currentUser: { email: string; name: string } | null;
   onUpdateReview?: (movieId: string, reviewId: string, comment: string, rating: number) => Promise<void>;
   onDeleteReview?: (movieId: string, reviewId: string) => Promise<void>;
+  adminMode?: boolean;
+  onImportPastMovies?: (movies: Omit<PastMovie, 'reviews'>[]) => Promise<void>;
 }
 
 export default function PastScreenings({ 
@@ -20,7 +22,9 @@ export default function PastScreenings({
   onAddReview, 
   currentUser,
   onUpdateReview,
-  onDeleteReview
+  onDeleteReview,
+  adminMode = false,
+  onImportPastMovies
 }: PastScreeningsProps) {
   const [selectedMovieId, setSelectedMovieId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -37,14 +41,109 @@ export default function PastScreenings({
   const [editCommentInput, setEditCommentInput] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const triggerSync = () => {
+  // New States for Letterboxd sync
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [letterboxdUsername, setLetterboxdUsername] = useState(() => {
+    return localStorage.getItem('last_letterboxd_sync_username') || '';
+  });
+  const [syncedMovies, setSyncedMovies] = useState<Omit<PastMovie, 'reviews'>[] | null>(null);
+  const [selectedImportIds, setSelectedImportIds] = useState<Record<string, boolean>>({});
+  const [syncStatusMsg, setSyncStatusMsg] = useState('');
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+
+  const triggerSync = async () => {
+    if (!adminMode) {
+      // Non-admin trigger shows the mock successful result to members
+      setIsSyncing(true);
+      setSyncSuccess(false);
+      setTimeout(() => {
+        setIsSyncing(false);
+        setSyncSuccess(true);
+        setTimeout(() => setSyncSuccess(false), 4000);
+      }, 2000);
+      return;
+    }
+
+    // Admin Mode trigger opens the interactive sync panel/modal
+    setShowSyncModal(true);
+    setSyncError(null);
+    setSyncedMovies(null);
+    setSyncStatusMsg('');
+  };
+
+  const handleFetchDiary = async () => {
+    const trimmedUser = letterboxdUsername.trim();
+    if (!trimmedUser) {
+      setSyncError('Please enter a Letterboxd username.');
+      return;
+    }
+
     setIsSyncing(true);
-    setSyncSuccess(false);
-    setTimeout(() => {
+    setSyncError(null);
+    setSyncedMovies(null);
+    setSyncStatusMsg('Connecting to Letterboxd RSS services, retrieving public diary feed...');
+
+    try {
+      const res = await fetch('/api/letterboxd-rss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: trimmedUser })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to fetch the Letterboxd feed.');
+      }
+
+      const moviesList: Omit<PastMovie, 'reviews'>[] = data.movies || [];
+      if (moviesList.length === 0) {
+        throw new Error('No recent watched/diary items found in the public profile RSS feed.');
+      }
+
+      setSyncedMovies(moviesList);
+      localStorage.setItem('last_letterboxd_sync_username', trimmedUser);
+
+      // Pre-select items that are NOT currently in the pastMovies list
+      const initialSelection: Record<string, boolean> = {};
+      moviesList.forEach(m => {
+        const exists = pastMovies.some(existing => 
+          existing.title.toLowerCase().trim() === m.title.toLowerCase().trim()
+        );
+        initialSelection[m.title] = !exists;
+      });
+      setSelectedImportIds(initialSelection);
+      setSyncStatusMsg('');
+    } catch (err: any) {
+      console.error(err);
+      setSyncError(err.message || 'Failed connection to Letterboxd proxy.');
+    } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleExecuteImport = async () => {
+    if (!syncedMovies || !onImportPastMovies) return;
+
+    const toImport = syncedMovies.filter(m => selectedImportIds[m.title]);
+    if (toImport.length === 0) {
+      setSyncError('Please select at least one movie to import.');
+      return;
+    }
+
+    setIsImporting(true);
+    setSyncError(null);
+    try {
+      await onImportPastMovies(toImport);
+      setShowSyncModal(false);
       setSyncSuccess(true);
       setTimeout(() => setSyncSuccess(false), 4000);
-    }, 2500);
+    } catch (err: any) {
+      console.error(err);
+      setSyncError(err.message || 'An error occurred during database writing.');
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const handleReviewSubmit = (e: React.FormEvent, movieId: string) => {
@@ -433,6 +532,209 @@ export default function PastScreenings({
           );
         })}
       </div>
+
+      {/* Sync Dialog modal for Admins */}
+      {showSyncModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[99]" id="letterboxd-sync-modal">
+          <div className="fixed inset-0 flex items-center justify-center p-4">
+            <div className="bg-zinc-950 border border-zinc-900 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+              
+              {/* Modal Header */}
+              <div className="p-6 border-b border-zinc-900 flex justify-between items-center bg-zinc-950">
+                <div className="flex items-center space-x-3">
+                  <div className="h-9 w-9 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-400 font-bold border border-amber-500/20">
+                    <RefreshCw className="h-4 w-4 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-zinc-100 font-mono flex items-center gap-1.5 uppercase tracking-wide">
+                      Letterboxd diary sync
+                    </h3>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Retrieve and save official club screenings from your public account
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowSyncModal(false)}
+                  className="text-zinc-500 hover:text-zinc-200 transition-colors p-1.5 bg-zinc-90 w/50 hover:bg-zinc-900 rounded-lg cursor-pointer transition-all duration-150"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 overflow-y-auto space-y-5 flex-1">
+                
+                {/* Input section */}
+                <div className="bg-zinc-900/30 border border-zinc-900 rounded-2xl p-4 space-y-3">
+                  <label className="block text-[10px] font-mono font-semibold tracking-wider text-zinc-400">
+                    LETTERBOXD ADMIN ACCOUNT NAME
+                  </label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600 text-xs font-mono">
+                        letterboxd.com/
+                      </span>
+                      <input
+                        type="text"
+                        value={letterboxdUsername}
+                        onChange={(e) => setLetterboxdUsername(e.target.value)}
+                        placeholder="your_letterboxd_user"
+                        className="w-full bg-zinc-950 text-zinc-100 border border-zinc-900 rounded-xl pl-28 pr-4 py-2.5 text-xs font-mono focus:outline-none focus:border-amber-500/50 transition-colors"
+                        disabled={isSyncing}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleFetchDiary();
+                        }}
+                      />
+                    </div>
+                    <button
+                      onClick={handleFetchDiary}
+                      disabled={isSyncing}
+                      className="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-5 rounded-xl text-xs font-mono transition-colors font-bold flex items-center justify-center space-x-1 shrink-0 cursor-pointer disabled:opacity-50"
+                    >
+                      {isSyncing ? (
+                        <>
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                          <span>Fetching...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Search className="h-3.5 w-3.5" />
+                          <span>Fetch Diary</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 leading-normal">
+                    The account must be set to public. This fetches your recent diary events.
+                  </p>
+                </div>
+
+                {/* Status or error container */}
+                {syncStatusMsg && (
+                  <div className="flex items-center space-x-2 text-xs text-amber-400 bg-amber-500/5 p-3 rounded-xl border border-amber-500/10">
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
+                    <span className="font-mono">{syncStatusMsg}</span>
+                  </div>
+                )}
+
+                {syncError && (
+                  <div className="flex items-center space-x-2 text-xs text-red-400 bg-red-400/5 p-3 rounded-xl border border-red-400/10">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    <span>{syncError}</span>
+                  </div>
+                )}
+
+                {/* Synced movies results */}
+                {syncedMovies && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider">
+                        EXTRACTED WIDGETS & DIARY ITEMS
+                      </h4>
+                      <span className="text-[10px] font-mono text-zinc-500 bg-zinc-900 px-2.25 py-0.5 rounded">
+                        {syncedMovies.length} found
+                      </span>
+                    </div>
+
+                    <div className="border border-zinc-900 rounded-2xl overflow-hidden bg-zinc-950 max-h-[220px] overflow-y-auto divide-y divide-zinc-900/40">
+                      {syncedMovies.map((movie) => {
+                        const isSelected = !!selectedImportIds[movie.title];
+                        const existsLocally = pastMovies.some(existing => 
+                          existing.title.toLowerCase().trim() === movie.title.toLowerCase().trim()
+                        );
+
+                        return (
+                          <div 
+                            key={movie.title}
+                            onClick={() => {
+                              if (existsLocally) return;
+                              setSelectedImportIds(prev => ({
+                                ...prev,
+                                [movie.title]: !prev[movie.title]
+                              }));
+                            }}
+                            className={`flex items-center gap-3 p-3 transition-colors select-none ${existsLocally ? 'opacity-50 cursor-default' : 'hover:bg-zinc-900/30 cursor-pointer'}`}
+                          >
+                            <div className="shrink-0 flex items-center justify-center">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                disabled={existsLocally}
+                                readOnly
+                                className="h-4 w-4 rounded border-zinc-800 bg-zinc-900 text-amber-500 focus:ring-amber-500 checked:bg-amber-500 cursor-pointer focus:ring-offset-zinc-950 transition-all"
+                              />
+                            </div>
+
+                            <img 
+                              src={movie.posterUrl} 
+                              alt={movie.title}
+                              referrerPolicy="no-referrer"
+                              className="w-10 h-14 rounded object-cover border border-zinc-850 bg-zinc-900"
+                              onError={(e) => {
+                                e.currentTarget.src = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300';
+                              }}
+                            />
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-baseline gap-1.5 flex-wrap">
+                                <h5 className="text-xs font-bold text-zinc-200 truncate">{movie.title}</h5>
+                                <span className="text-[10px] font-mono text-zinc-500">({movie.year})</span>
+                              </div>
+                              <p className="text-[10px] text-zinc-500 truncate mt-0.5">
+                                Directed by <span className="text-zinc-400">{movie.director || 'Unknown'}</span> • {movie.genre?.join(', ')}
+                              </p>
+                              <p className="text-[9px] font-mono text-zinc-600 mt-1">
+                                Date Logged: {movie.screenedDate} • Rating: {movie.rating} ★
+                              </p>
+                            </div>
+
+                            {existsLocally && (
+                              <div className="shrink-0 text-[10px] font-mono text-zinc-650 bg-zinc-900/60 px-2 py-0.5 rounded">
+                                Already Added
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-zinc-900 bg-zinc-950 flex justify-between gap-3 px-6">
+                <button
+                  onClick={() => setShowSyncModal(false)}
+                  className="px-4 py-2 border border-zinc-850 hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-mono transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleExecuteImport}
+                  disabled={isImporting || !syncedMovies || syncedMovies.filter(m => selectedImportIds[m.title]).length === 0}
+                  className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-zinc-950 px-5 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center space-x-1 shrink-0 cursor-pointer"
+                >
+                  {isImporting ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      <span>Writing to Database...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Add Selected ({syncedMovies ? syncedMovies.filter(m => selectedImportIds[m.title]).length : 0})</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
