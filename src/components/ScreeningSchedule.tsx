@@ -510,9 +510,28 @@ export default function ScreeningSchedule({
                     <Edit2 className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       if (confirm(`Remove "${screening.title}" from upcoming schedule?`)) {
-                        onDeleteScreening(screening.id);
+                        try {
+                          await onDeleteScreening(screening.id);
+                          setFeedbackMsg(`🗑️ Successfully deleted "${screening.title}" from schedule.`);
+                          setTimeout(() => setFeedbackMsg(''), 4500);
+                        } catch (err: any) {
+                          console.error("Delete failed:", err);
+                          let parsedMsg = "Failed to delete screening.";
+                          try {
+                            const parsedErr = JSON.parse(err.message);
+                            if (parsedErr.error && parsedErr.error.includes("Permission denied")) {
+                              parsedMsg = "Firebase Permission Denied: Your IISER Kolkata admin session is expired or unauthorized to perform deletes.";
+                            } else {
+                              parsedMsg = parsedErr.error || err.message;
+                            }
+                          } catch (e) {
+                            parsedMsg = err.message || "Failed to delete.";
+                          }
+                          setFeedbackMsg(`❌ ${parsedMsg}`);
+                          setTimeout(() => setFeedbackMsg(''), 6000);
+                        }
                       }
                     }}
                     className="p-2 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
