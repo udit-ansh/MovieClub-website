@@ -54,10 +54,12 @@ export interface Recommendation {
 }
 
 export interface User {
+  uid?: string;
   email: string;
   name: string;
   role: 'admin' | 'student';
   photoURL?: string;
+  lastActive?: string;
 }
 
 export interface TriviaQuestion {

@@ -60,6 +60,20 @@
         "posterUrl": { "type": "string", "description": "Optional poster image URL" }
       },
       "required": ["id", "title", "director", "year", "genre", "notes", "suggestedBy", "suggestedByName", "suggestedAt", "votes"]
+    },
+    "user": {
+      "title": "User",
+      "description": "Logged in club members",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Authentication UID" },
+        "email": { "type": "string", "description": "Institute student/admin email ID" },
+        "name": { "type": "string", "description": "Display name" },
+        "role": { "type": "string", "description": "Admin or Student permission" },
+        "photoURL": { "type": "string", "description": "Google Profile picture URL" },
+        "lastActive": { "type": "string", "description": "ISO timestamp of last activity" }
+      },
+      "required": ["email", "name", "role", "lastActive"]
     }
   },
   "firestore": {
@@ -74,6 +88,10 @@
     "recommendations": {
       "schema": "recommendation",
       "description": "Student wishlists"
+    },
+    "users": {
+      "schema": "user",
+      "description": "Logged in club members database"
     }
   }
 }

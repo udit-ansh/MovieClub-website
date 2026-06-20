@@ -162,7 +162,8 @@ export const initialRecommendations: Recommendation[] = [
     suggestedBy: 'ritoban.chem@iiserkol.ac.in',
     suggestedByName: 'Ritoban Roy',
     suggestedAt: '2026-06-12T14:24:00Z',
-    votes: ['uditansh2007@gmail.com', 'arindam.phys@iiserkol.ac.in', 'soham.bio@iiserkol.ac.in']
+    votes: ['uditansh2007@gmail.com', 'arindam.phys@iiserkol.ac.in', 'soham.bio@iiserkol.ac.in'],
+    posterUrl: 'https://upload.wikimedia.org/wikipedia/en/d/d4/The_Zone_of_Interest_poster.jpeg'
   },
   {
     id: 'rec-2',
@@ -174,7 +175,8 @@ export const initialRecommendations: Recommendation[] = [
     suggestedBy: 'priya.math@iiserkol.ac.in',
     suggestedByName: 'Priya Banerjee',
     suggestedAt: '2026-06-13T10:15:00Z',
-    votes: ['arindam.phys@iiserkol.ac.in']
+    votes: ['arindam.phys@iiserkol.ac.in'],
+    posterUrl: 'https://upload.wikimedia.org/wikipedia/en/d/df/Arrival_film_poster.jpg'
   }
 ];
 

@@ -24,6 +24,7 @@ import PastScreenings from './components/PastScreenings';
 import Recommendations from './components/Recommendations';
 import ClubDiscussions from './components/ClubDiscussions';
 import PollsSection from './components/PollsSection';
+import PeopleSection from './components/PeopleSection';
 
 // Prevents reactive re-seeding triggers when an admin empties the database collections manually
 let screeningsSeedAttempted = false;
@@ -296,6 +297,24 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Helper to sync local user state with Firestore 'users' directory
+  const syncUserToFirestore = async (userObj: User) => {
+    const activeUid = userObj.uid || auth.currentUser?.uid;
+    if (!userObj.email || !activeUid) return;
+    try {
+      await setDoc(doc(db, 'users', activeUid), {
+        uid: activeUid,
+        email: userObj.email,
+        name: userObj.name,
+        role: userObj.role,
+        photoURL: userObj.photoURL || '',
+        lastActive: new Date().toISOString()
+      }, { merge: true });
+    } catch (e) {
+      console.warn('[Firebase] Failed to write user registration to Firestore:', e);
+    }
+  };
+
   // Listen to real Firebase auth status changes and auto-login if authenticated
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -316,12 +335,14 @@ export default function App() {
           ) {
             role = 'admin';
           }
-          const userObj: User = { email, name, role, photoURL };
+          const userObj: User = { uid: firebaseUser.uid, email, name, role, photoURL, lastActive: new Date().toISOString() };
           setCurrentUser(userObj);
           localStorage.setItem('iiser_movie_user', JSON.stringify(userObj));
           if (role === 'admin') {
             setAdminMode(true);
           }
+          // Sync to database
+          syncUserToFirestore(userObj);
         }
       }
     });
@@ -331,12 +352,13 @@ export default function App() {
 
   // Auth Callbacks
   const handleLogin = (email: string, name: string, role: 'admin' | 'student', photoURL?: string) => {
-    const userObj: User = { email, name, role, photoURL };
+    const userObj: User = { uid: auth.currentUser?.uid, email, name, role, photoURL, lastActive: new Date().toISOString() };
     setCurrentUser(userObj);
     localStorage.setItem('iiser_movie_user', JSON.stringify(userObj));
     if (role === 'admin') {
       setAdminMode(true);
     }
+    syncUserToFirestore(userObj);
   };
 
   const handleLogout = () => {
@@ -349,10 +371,12 @@ export default function App() {
     if (!currentUser) return;
     const userObj: User = {
       ...currentUser,
-      ...updatedFields
+      ...updatedFields,
+      lastActive: new Date().toISOString()
     };
     setCurrentUser(userObj);
     localStorage.setItem('iiser_movie_user', JSON.stringify(userObj));
+    syncUserToFirestore(userObj);
   };
 
   // Admin Actions for Schedule (Real-time synced updates to database)
@@ -686,6 +710,17 @@ export default function App() {
                 polls={polls}
                 currentUser={currentUser}
                 adminMode={adminMode}
+              />
+            )}
+
+            {activeTab === 'people' && (
+              <PeopleSection
+                currentUser={currentUser}
+                adminMode={adminMode}
+                screenings={screenings}
+                pastMovies={pastMovies}
+                recommendations={recommendations}
+                discussions={discussions}
               />
             )}
           </motion.div>
