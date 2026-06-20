@@ -444,7 +444,7 @@ export default function ScreeningSchedule({
             Now Screening
           </h2>
           <p className="text-sm text-zinc-400 mt-2 max-w-2xl leading-relaxed">
-            Cinephilia brings specialized film curator choices to IISER Kolkata. screenings are open to all students, faculties, fellowship researchers, and staff. Join us for discussion sessions after each show!
+            The Movie Club brings specialized film curator choices to IISER Kolkata. Screenings are open to all students, faculties, fellowship researchers, and staff. Join us for discussion sessions after each show!
           </p>
         </div>
         
@@ -649,7 +649,7 @@ export default function ScreeningSchedule({
           </div>
         </div>
         <p className="text-xs font-mono text-zinc-500 text-center sm:text-right">
-          Cinephilia Club coordinate • IISER Kolkata
+          Movie Club Coordinate • IISER Kolkata
         </p>
       </div>
 

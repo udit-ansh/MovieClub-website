@@ -150,5 +150,28 @@ service cloud.firestore {
 
       allow delete: if isAdmin() || (isIISERUser() && (request.auth == null || !('email' in request.auth.token) || request.auth.token.email == null || existing().authorEmail == request.auth.token.email));
     }
+
+    // Collection 5: Polls (Interactive screening voting)
+    match /polls/{pollId} {
+      allow read, get, list: if true;
+      allow create: if isAdmin() && isValidId(pollId) &&
+        incoming().id == pollId &&
+        incoming().question is string && incoming().question.size() > 0 &&
+        incoming().startsAt is string && incoming().closesAt is string &&
+        incoming().options is list;
+
+      allow update: if isIISERUser() && (
+        isAdmin() ||
+        (
+          incoming().id == existing().id &&
+          incoming().question == existing().question &&
+          incoming().startsAt == existing().startsAt &&
+          incoming().closesAt == existing().closesAt &&
+          incoming().options is list
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
   }
 }

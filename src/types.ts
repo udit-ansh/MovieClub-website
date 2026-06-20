@@ -90,3 +90,26 @@ export interface ClubDiscussion {
   votes: string[]; // List of student emails who liked/upvoted
   comments: DiscussionComment[];
 }
+
+export interface PollMovieOption {
+  id: string;
+  title: string;
+  director: string;
+  year: number;
+  genre: string;
+  synopsis: string;
+  posterUrl?: string;
+  votes: string[]; // List of user emails who voted for this option
+}
+
+export interface Poll {
+  id: string;
+  question: string;
+  description?: string;
+  startsAt: string; // ISO string timestamp
+  closesAt: string; // ISO string timestamp
+  createdAt: string; // ISO string timestamp
+  options: PollMovieOption[];
+  createdBy: string; // admin email
+}
+

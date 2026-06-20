@@ -291,11 +291,11 @@ export default function Navbar({
               <div className="absolute -top-1 -right-1 flex h-3 w-3 rounded-full bg-amber-500 animate-pulse"></div>
             </div>
             <div>
-              <h1 className="font-serif text-lg font-extrabold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-zinc-100 via-amber-200 to-amber-400 sm:text-xl drop-shadow-[0_2px_8px_rgba(245,158,11,0.2)]">
-                CINEPHILIA
+              <h1 className="font-serif text-lg font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-zinc-100 via-amber-200 to-amber-400 sm:text-xl drop-shadow-[0_2px_8px_rgba(245,158,11,0.2)] uppercase">
+                Movie Club
               </h1>
               <p className="font-mono text-[10px] tracking-wider text-amber-500/80 uppercase">
-                Movie Club IISER Kolkata
+                IISER Kolkata
               </p>
             </div>
           </div>
@@ -306,7 +306,8 @@ export default function Navbar({
               { id: 'schedule', label: 'Screenings' },
               { id: 'past', label: 'Past Screenings' },
               { id: 'discussions', label: 'Discussions' },
-              { id: 'recommendations', label: 'Recommendations' }
+              { id: 'recommendations', label: 'Recommendations' },
+              { id: 'polls', label: 'Polls' }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -434,7 +435,8 @@ export default function Navbar({
             { id: 'schedule', label: 'Schedule' },
             { id: 'past', label: 'Past' },
             { id: 'discussions', label: 'Discuss' },
-            { id: 'recommendations', label: 'Recs' }
+            { id: 'recommendations', label: 'Recs' },
+            { id: 'polls', label: 'Polls' }
           ].map((tab) => (
             <button
               key={tab.id}

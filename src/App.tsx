@@ -4,7 +4,7 @@ import {
   Film, Sparkles, MapPin, Users, Clapperboard 
 } from 'lucide-react';
 
-import { Screening, PastMovie, Recommendation, User, UserReview, ClubDiscussion } from './types';
+import { Screening, PastMovie, Recommendation, User, UserReview, ClubDiscussion, Poll } from './types';
 import { initialScreenings, initialPastMovies, initialRecommendations, initialDiscussions } from './initialData';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
@@ -23,12 +23,17 @@ import ScreeningSchedule from './components/ScreeningSchedule';
 import PastScreenings from './components/PastScreenings';
 import Recommendations from './components/Recommendations';
 import ClubDiscussions from './components/ClubDiscussions';
+import PollsSection from './components/PollsSection';
 
 // Prevents reactive re-seeding triggers when an admin empties the database collections manually
 let screeningsSeedAttempted = false;
 let pastMoviesSeedAttempted = false;
 let recommendationsSeedAttempted = false;
 let discussionsSeedAttempted = false;
+
+const sanitizeDoc = <T extends object>(obj: T): T => {
+  return JSON.parse(JSON.stringify(obj));
+};
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -40,6 +45,7 @@ export default function App() {
   const [pastMovies, setPastMovies] = useState<PastMovie[]>(initialPastMovies);
   const [recommendations, setRecommendations] = useState<Recommendation[]>(initialRecommendations);
   const [discussions, setDiscussions] = useState<ClubDiscussion[]>(initialDiscussions);
+  const [polls, setPolls] = useState<Poll[]>([]);
 
   // Load session auth from local storage on bootstrap
   useEffect(() => {
@@ -119,7 +125,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser?.email]);
 
   // 2. Subscribe to Past Movies
   useEffect(() => {
@@ -175,7 +181,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser?.email]);
 
   // 3. Subscribe to Recommendations
   useEffect(() => {
@@ -231,7 +237,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser?.email]);
 
   // 4. Subscribe to Discussions & Reviews
   useEffect(() => {
@@ -270,7 +276,25 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser?.email]);
+
+  // 5. Subscribe to Selection Polls
+  useEffect(() => {
+    const pollsCol = collection(db, 'polls');
+    const unsubscribe = onSnapshot(pollsCol, (snapshot) => {
+      const list: Poll[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push(docSnap.data() as Poll);
+      });
+      // Sort by createdAt descending
+      list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      setPolls(list);
+    }, (error) => {
+      console.warn('[Firebase] Polls onSnapshot error (handled gracefully):', error);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser?.email]);
 
   // Listen to real Firebase auth status changes and auto-login if authenticated
   useEffect(() => {
@@ -494,7 +518,7 @@ export default function App() {
       comments: []
     };
     try {
-      await setDoc(doc(db, 'discussions', id), newEntry);
+      await setDoc(doc(db, 'discussions', id), sanitizeDoc(newEntry));
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `discussions/${id}`);
     }
@@ -582,7 +606,7 @@ export default function App() {
             </h2>
             
             <p className="mt-4 text-sm sm:text-base text-zinc-400 max-w-2xl leading-relaxed">
-              We look beyond blockbuster boundaries to discover avant-garde scripts, acoustic masterpieces, and historic movements. Cinephilia brings the best index of international world cinema directly to the M.N. Saha Auditorium, Ground Floor, TRC building.
+              We look beyond blockbuster boundaries to discover avant-garde scripts, acoustic masterpieces, and historic movements. The Movie Club brings the best index of international world cinema directly to the M.N. Saha Auditorium, Ground Floor, TRC building.
             </p>
 
             {/* Quick stats board */}
@@ -656,6 +680,14 @@ export default function App() {
                 onMarkScreened={handleMarkScreened}
               />
             )}
+
+            {activeTab === 'polls' && (
+              <PollsSection
+                polls={polls}
+                currentUser={currentUser}
+                adminMode={adminMode}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -664,8 +696,8 @@ export default function App() {
       <footer className="border-t border-zinc-900 bg-zinc-980 py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="text-center md:text-left space-y-1">
-            <h3 className="font-serif text-sm font-semibold tracking-wide text-zinc-300">
-              CINEPHILIA
+            <h3 className="font-serif text-sm font-semibold tracking-wide text-zinc-300 uppercase">
+              Movie Club IISER Kolkata
             </h3>
             <p className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider">
               The Film Studies Society • IISER Kolkata
@@ -682,7 +714,7 @@ export default function App() {
 
           <div className="text-center md:text-right">
             <p className="text-[10px] text-zinc-600">
-              © 2026 Cinephilia Club. Created for cinema lovers of Indian Institute of Science Education and Research, Kolkata.
+              © 2026 Movie Club IISER Kolkata. Created for cinema lovers of Indian Institute of Science Education and Research, Kolkata.
             </p>
           </div>
         </div>
