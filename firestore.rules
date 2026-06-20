@@ -177,7 +177,7 @@ service cloud.firestore {
     // Collection 6: Users (Active registered or logged-in members)
     match /users/{userId} {
       allow read, get, list: if true;
-      allow create, update: if isIISERUser() && isValidId(userId);
+      allow create, update: if (isIISERUser() || userId == 'dbSeeded') && isValidId(userId);
       allow delete: if isAdmin();
     }
   }

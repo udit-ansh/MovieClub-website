@@ -176,8 +176,18 @@ export default function App() {
           console.warn('[Firebase] Screenings collection check failed:', e);
         }
 
-        if (markerExists || hasExistingScreenings) {
-          console.log('[Firebase] Database already seeded or containing active schedule. Direct stream active.');
+        if (markerExists) {
+          console.log('[Firebase] Database already seeded. Direct stream active.');
+          return;
+        }
+
+        if (hasExistingScreenings) {
+          console.log('[Firebase] Active database detected. Backfilling master seed marker to prevent future re-seeding...');
+          try {
+            await setDoc(seedMarkerRef, { seeded: true, seededAt: new Date().toISOString() });
+          } catch (e) {
+            console.warn('[Firebase] Failed to write backfilled master seed marker:', e);
+          }
           return;
         }
 

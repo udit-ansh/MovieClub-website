@@ -367,37 +367,25 @@ export default function ScreeningSchedule({
         })
       : onAddScreening(screeningData);
 
-    // Create a 2.0 second timeout promise. If Firestore is slow to sync, we treat it as
-    // saved locally (since it updates the UI immediately through standard onSnapshot) and close the modal.
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("LOCAL_SYNC")), 2000);
-    });
-
     try {
-      await Promise.race([savePromise, timeoutPromise]);
+      await savePromise;
       setFeedbackMsg(`✨ Screening ${editingScreening ? 'updated' : 'added'} successfully!`);
       setTimeout(() => setFeedbackMsg(''), 4500);
       setShowFormModal(false);
     } catch (err: any) {
-      if (err.message === "LOCAL_SYNC") {
-        setFeedbackMsg(`💾 Saved! Syncing in the background...`);
-        setTimeout(() => setFeedbackMsg(''), 4500);
-        setShowFormModal(false);
-      } else {
-        console.error("Failed to save screening:", err);
-        let parsedMsg = "";
-        try {
-          const parsedErr = JSON.parse(err.message);
-          if (parsedErr.error && parsedErr.error.includes("Permission denied")) {
-            parsedMsg = "Firebase Permission Denied: Your IISER Kolkata admin credentials or passcode login has expired or is unauthorized.";
-          } else {
-            parsedMsg = parsedErr.error || err.message;
-          }
-        } catch (e) {
-          parsedMsg = err.message || "Failed to publish. Check connection/credentials and try again.";
+      console.error("Failed to save screening:", err);
+      let parsedMsg = "";
+      try {
+        const parsedErr = JSON.parse(err.message);
+        if (parsedErr.error && parsedErr.error.includes("Permission denied")) {
+          parsedMsg = "Firebase Permission Denied: Your IISER Kolkata admin credentials or passcode login has expired or is unauthorized.";
+        } else {
+          parsedMsg = parsedErr.error || err.message;
         }
-        setSubmitError(parsedMsg);
+      } catch (e) {
+        parsedMsg = err.message || "Failed to publish. Check connection/credentials and try again.";
       }
+      setSubmitError(parsedMsg);
     } finally {
       setIsSubmitting(false);
     }
